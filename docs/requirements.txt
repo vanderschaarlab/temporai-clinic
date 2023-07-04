@@ -4,7 +4,7 @@
 # install_requires:
 importlib-metadata; python_version<"3.8"
 plotly
-streamlit >=1.24, <2
+streamlit >=1, <2
 # dev:
 black[jupyter]
 blacken-docs
