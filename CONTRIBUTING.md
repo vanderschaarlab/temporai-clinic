@@ -1,3 +1,8 @@
+> **⚠️ NOTE:** This guide is a template, it will be updated as we develop this project further.
+---
+
+
+
 ```{todo} THIS IS SUPPOSED TO BE AN EXAMPLE. MODIFY IT ACCORDING TO YOUR NEEDS!
 
    The document assumes you are using a source repository service that promotes a
