@@ -52,3 +52,11 @@ MANIFEST
 .venv*/
 .conda*/
 .python-version
+
+### Custom ###
+.dev/**
+logs/**
+outputs/**
+data/**
+codecov
+workspace

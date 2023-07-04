@@ -1,67 +1,69 @@
-exclude: '^docs/conf.py'
+# Global exclude:
+exclude: '^data/,^.tox/,^build/,^dist/,^logs/,^outputs/,^workspace/,^.eggs/'
 
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v4.4.0
   hooks:
   - id: trailing-whitespace
+    args: ['--markdown-linebreak-ext=md']
   - id: check-added-large-files
+    args: ['--maxkb=1000']
   - id: check-ast
+  - id: check-case-conflict
   - id: check-json
   - id: check-merge-conflict
+  - id: check-toml
   - id: check-xml
   - id: check-yaml
+  - id: check-executables-have-shebangs
   - id: debug-statements
   - id: end-of-file-fixer
+  - id: pretty-format-json
+    args: ['--autofix', '--indent=4', '--no-sort-keys']
   - id: requirements-txt-fixer
+    exclude: docs/requirements.txt
   - id: mixed-line-ending
-    args: ['--fix=auto']  # replace 'auto' with 'lf' to enforce Linux/Mac line endings or 'crlf' for Windows
+    args: ['--fix=auto']
 
-## If you want to automatically "modernize" your Python code:
-# - repo: https://github.com/asottile/pyupgrade
-#   rev: v3.7.0
-#   hooks:
-#   - id: pyupgrade
-#     args: ['--py37-plus']
-
-## If you want to avoid flake8 errors due to unused vars or imports:
-# - repo: https://github.com/PyCQA/autoflake
-#   rev: v2.1.1
-#   hooks:
-#   - id: autoflake
-#     args: [
-#       --in-place,
-#       --remove-all-unused-imports,
-#       --remove-unused-variables,
-#     ]
-
-- repo: https://github.com/PyCQA/isort
-  rev: 5.11.5
+- repo: https://github.com/pycqa/isort
+  rev: 5.12.0
   hooks:
   - id: isort
 
 - repo: https://github.com/psf/black
-  rev: stable
+  rev: 23.3.0
   hooks:
-  - id: black
+  - id: black-jupyter
     language_version: python3
+    # args: [ "--force-exclude=dir/" ]
 
-## If like to embrace black styles even in the docs:
-# - repo: https://github.com/asottile/blacken-docs
-#   rev: v1.13.0
-#   hooks:
-#   - id: blacken-docs
-#     additional_dependencies: [black]
+# If like to embrace black styles even in the docs:
+- repo: https://github.com/asottile/blacken-docs
+  rev: 1.14.0
+  hooks:
+  - id: blacken-docs
+    additional_dependencies: [black]
+    exclude: 'docs/user_guide'  # Auto-generated, leave as is.
 
 - repo: https://github.com/PyCQA/flake8
-  rev: 5.0.4
+  rev: 6.0.0
   hooks:
   - id: flake8
   ## You can add flake8 plugins via `additional_dependencies`:
   #  additional_dependencies: [flake8-bugbear]
 
-## Check for misspells in documentation files:
-# - repo: https://github.com/codespell-project/codespell
-#   rev: v2.2.5
-#   hooks:
-#   - id: codespell
+-   repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.4.1
+    hooks:
+    -   id: mypy
+        files: "^src/"
+        args: [--config-file=mypy.ini]
+        additional_dependencies: [pydantic]
+
+- repo: https://github.com/PyCQA/bandit
+  rev: 1.7.5
+  hooks:
+  - id: bandit
+    args: ["-c", "pyproject.toml", "-q"]
+    additional_dependencies: ["bandit[toml]"]

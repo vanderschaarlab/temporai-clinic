@@ -1,17 +1,6 @@
-# temporai-clinic
+# TemporAI-Clinic
 
-TemporAI-Clinic: Interactive web app for prototyping ML for medicine and healthcare in the clinic
-
-
-## Note
-
-> This is the main page of your project's [Sphinx] documentation. It is
-> formatted in [Markdown]. Add additional pages by creating md-files in
-> `docs` or rst-files (formatted in [reStructuredText]) and adding links to
-> them in the `Contents` section below.
->
-> Please check [Sphinx] and [MyST] for more information
-> about how to document your project and how to configure your preferences.
+**TemporAI-Clinic**: Interactive web app for prototyping ML for medicine and healthcare in the real world.
 
 
 ## Contents
@@ -19,7 +8,7 @@ TemporAI-Clinic: Interactive web app for prototyping ML for medicine and healthc
 ```{toctree}
 :maxdepth: 2
 
-Overview <readme>
+Overview <overview>
 Contributions & Help <contributing>
 License <license>
 Authors <authors>
