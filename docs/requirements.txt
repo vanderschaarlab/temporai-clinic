@@ -1,6 +1,30 @@
-# Requirements file for ReadTheDocs, check .readthedocs.yml.
 # To build the module reference correctly, make sure every external package
 # under `install_requires` in `setup.cfg` is also listed here!
-# sphinx_rtd_theme
-myst-parser[linkify]
-sphinx>=3.2.1
+# ----- auto_update -----
+# install_requires:
+importlib-metadata; python_version<"3.8"
+plotly
+streamlit >=1.24, <2
+# dev:
+black[jupyter]
+blacken-docs
+build
+flake8
+isort
+jupyter
+mypy >= 1.0.0
+myst-parser
+pre-commit
+pylint
+pyscaffold
+pyscaffoldext-markdown >= 0.5
+pytest
+pytest-cov
+pytest-xdist
+setuptools
+setuptools-scm
+sphinx >=5, !=5.1.0  # Bug in version 5.1.0.
+sphinx-immaterial
+tox
+twine
+# ----- auto_update -----

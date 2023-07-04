@@ -10,6 +10,7 @@
 import os
 import shutil
 import sys
+import time
 
 # -- Path setup --------------------------------------------------------------
 
@@ -31,7 +32,7 @@ sys.path.insert(0, os.path.join(__location__, "../src"))
 try:  # for Sphinx >= 1.7
     from sphinx.ext import apidoc
 except ImportError:
-    from sphinx import apidoc
+    from sphinx import apidoc  # type: ignore
 
 output_dir = os.path.join(__location__, "api")
 module_dir = os.path.join(__location__, "../src/tempor")
@@ -43,7 +44,7 @@ except FileNotFoundError:
 try:
     import sphinx
 
-    cmd_line = f"sphinx-apidoc --implicit-namespaces -f -o {output_dir} {module_dir}"
+    cmd_line = f"sphinx-apidoc --implicit-namespaces -e -f -o {output_dir} {module_dir}"
 
     args = cmd_line.split(" ")
     if tuple(sphinx.__version__.split(".")) >= ("1", "7"):
@@ -51,13 +52,13 @@ try:
         args = args[1:]
 
     apidoc.main(args)
-except Exception as e:
+except Exception as e:  # pylint: disable=broad-except
     print("Running `sphinx-apidoc` failed!\n{}".format(e))
 
 # -- General configuration ---------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
-# needs_sphinx = '1.0'
+needs_sphinx = "5.0.0"
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
@@ -93,7 +94,24 @@ myst_enable_extensions = [
     "smartquotes",
     "substitution",
     "tasklist",
+    "attrs_inline",
+    "attrs_block",
 ]
+
+# MyST URL schemes.
+myst_url_schemes = {
+    "http": None,
+    "https": None,
+    "ftp": None,
+    "mailto": None,
+    "repo-code": "https://github.com/vanderschaarlab/temporai-clinic/tree/main/{{path}}#{{fragment}}",
+    # "doi": "https://doi.org/{{path}}",
+    # "gh-issue": {
+    #     "url": "https://github.com/executablebooks/MyST-Parser/issue/{{path}}#{{fragment}}",
+    #     "title": "Issue #{{path}}",
+    #     "classes": ["github"],
+    # },
+}
 
 # The suffix of source filenames.
 source_suffix = [".rst", ".md"]
@@ -105,8 +123,8 @@ source_suffix = [".rst", ".md"]
 master_doc = "index"
 
 # General information about the project.
-project = "temporai-clinic"
-copyright = "2023, Evgeny Saveliev"
+project = "TemporAI-Clinic"
+copyright = f"{time.strftime('%Y')}, van der Schaar Lab"  # pylint: disable=redefined-builtin
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -141,7 +159,7 @@ release = version
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", ".venv"]
 
 # The reST default role (used for this markup: `text`) to use for all documents.
-# default_role = None
+default_role = "py:obj"
 
 # If true, '()' will be appended to :func: etc. cross-reference text.
 # add_function_parentheses = True
@@ -155,7 +173,8 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", ".venv"]
 # show_authors = False
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = "sphinx"
+# https://pygments.org/styles/
+pygments_style = "tango"
 
 # A list of ignored prefixes for module index sorting.
 # modindex_common_prefix = []
@@ -165,6 +184,17 @@ pygments_style = "sphinx"
 
 # If this is True, todo emits a warning for each TODO entries. The default is False.
 todo_emit_warnings = True
+
+
+# -- Configure autodoc ---------------------------------------------
+
+autoclass_content = "both"
+
+autodoc_member_order = "bysource"
+
+# autodoc_mock_imports = ["sklearn"]  # Update as needed.
+
+# -- Configure autodoc (end) ---------------------------------------
 
 
 # -- Options for HTML output -------------------------------------------------
@@ -249,7 +279,7 @@ htmlhelp_basename = "temporai-clinic-doc"
 
 # -- Options for LaTeX output ------------------------------------------------
 
-latex_elements = {
+latex_elements = {  # type: ignore
     # The paper size ("letterpaper" or "a4paper").
     # "papersize": "letterpaper",
     # The font size ("10pt", "11pt" or "12pt").
@@ -260,7 +290,7 @@ latex_elements = {
 
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto/manual]).
-latex_documents = [("index", "user_guide.tex", "temporai-clinic Documentation", "Evgeny Saveliev", "manual")]
+latex_documents = [("index", "user_guide.tex", "TemporAI-Clinic Documentation", "Evgeny Saveliev", "manual")]
 
 # The name of an image file (relative to this directory) to place at the top of
 # the title page.

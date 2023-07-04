@@ -1,6 +1,6 @@
 # temporai-clinic
 
-TemporAI-Clinic: Interactive web app for prototyping ML for medicine and healthcare in the clinic
+TemporAI-Clinic: Interactive web app for prototyping ML for medicine and healthcare in the real world
 
 
 ## Note
