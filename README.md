@@ -10,18 +10,6 @@
 [![Twitter](https://img.shields.io/twitter/url/http/shields.io.svg?style=social&label=Twitter)](https://twitter.com/temporai-clinic)
 -->
 
-[![Project generated with PyScaffold](https://img.shields.io/badge/-PyScaffold-005CA0?logo=pyscaffold)](https://pyscaffold.org/)
-
 # temporai-clinic
 
-> TemporAI-Clinic: Interactive web app for prototyping ML for medicine and healthcare in the clinic
-
-A longer description of your project goes here...
-
-
-<!-- pyscaffold-notes -->
-
-## Note
-
-This project has been set up using PyScaffold 4.5. For details and usage
-information on PyScaffold see https://pyscaffold.org/.
+TemporAI-Clinic: Interactive web app for prototyping ML for medicine and healthcare in the clinic.
