@@ -3,6 +3,7 @@
 
 
 
+<!--
 ```{todo} THIS IS SUPPOSED TO BE AN EXAMPLE. MODIFY IT ACCORDING TO YOUR NEEDS!
 
    The document assumes you are using a source repository service that promotes a
@@ -29,6 +30,7 @@
    also include, like mentioning labels of your issue tracker or automated
    releases.
 ```
+-->
 
 # Contributing
 
@@ -73,6 +75,7 @@ by adding missing information and correcting mistakes.
 This means that the docs are kept in the same repository as the project code, and
 that any documentation update is done in the same way was a code contribution.
 
+<!--
 ```{todo} Don't forget to mention which markup language you are using.
 
     e.g.,  [reStructuredText] or [CommonMark] with [MyST] extensions.
@@ -95,6 +98,7 @@ that any documentation update is done in the same way was a code contribution.
       submit your proposal.
    :::
 ```
+-->
 
 When working on documentation changes in your local machine, you can
 compile them using [tox] :
@@ -112,12 +116,14 @@ python3 -m http.server --directory 'docs/_build/html'
 
 ## Code Contributions
 
+<!--
 ```{todo} Please include a reference or explanation about the internals of the project.
 
    An architecture description, design principles or at least a summary of the
    main concepts will make it easy for potential contributors to get started
    quickly.
 ```
+-->
 
 ### Submit an issue
 
@@ -165,8 +171,10 @@ conda activate temporai-clinic
 
    to be able to import the package under development in the Python REPL.
 
+   <!--
    ```{todo} if you are not using pre-commit, please remove the following item:
    ```
+   -->
 
 5. Install [pre-commit]:
 
@@ -202,8 +210,10 @@ conda activate temporai-clinic
 
    to record your changes in [git].
 
+   <!--
    ```{todo} if you are not using pre-commit, please remove the following item:
    ```
+   -->
 
    Please make sure to see the validation messages from [pre-commit] and fix
    any eventual issues.
@@ -246,6 +256,7 @@ conda activate temporai-clinic
 2. Go to the web page of your fork and click "Create pull request"
    to send your changes for review.
 
+   <!--
    ```{todo} if you are using GitHub, you can uncomment the following paragraph
 
       Find more detailed information in [creating a PR]. You might also want to open
@@ -253,6 +264,7 @@ conda activate temporai-clinic
       from the continuous integration (CI) system or any required fixes.
 
    ```
+   -->
 
 ### Troubleshooting
 
@@ -311,11 +323,13 @@ package:
 
 ### Releases
 
+<!--
 ```{todo} This section assumes you are using PyPI to publicly release your package.
 
    If instead you are using a different/private package index, please update
    the instructions accordingly.
 ```
+-->
 
 If you are part of the group of maintainers and have correct user permissions
 on [PyPI], the following steps can be used to release a new version for
@@ -368,9 +382,5 @@ on [PyPI], the following steps can be used to release a new version for
 [virtual environment]: https://realpython.com/python-virtual-environments-a-primer/
 [virtualenv]: https://virtualenv.pypa.io/en/stable/
 
-
-```{todo} Please review and change the following definitions:
-```
-
-[repository]: https://github.com/<USERNAME>/temporai-clinic
-[issue tracker]: https://github.com/<USERNAME>/temporai-clinic/issues
+[repository]: https://github.com/vanderschaarlab/temporai-clinic
+[issue tracker]: https://github.com/vanderschaarlab/temporai-clinic/issues

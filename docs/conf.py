@@ -73,6 +73,7 @@ extensions = [
     "sphinx.ext.ifconfig",
     "sphinx.ext.mathjax",
     "sphinx.ext.napoleon",
+    "sphinx_immaterial",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -201,12 +202,90 @@ autodoc_member_order = "bysource"
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = "alabaster"
+html_theme = "sphinx_immaterial"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-html_theme_options = {"sidebar_width": "300px", "page_width": "1200px"}
+html_theme_options = {
+    "icon": {
+        "repo": "fontawesome/brands/github",
+        "edit": "material/file-edit-outline",
+    },
+    "site_url": "https://www.temporai.vanderschaar-lab.com/",
+    "repo_url": "https://github.com/vanderschaarlab/temporai-clinic/",
+    "repo_name": "TemporAI-Clinic",
+    "edit_uri": "blob/main/docs",
+    "globaltoc_collapse": True,
+    "features": [
+        "navigation.expand",
+        # "navigation.tabs",
+        # "toc.integrate",
+        "navigation.sections",
+        # "navigation.instant",
+        # "header.autohide",
+        "navigation.top",
+        # "navigation.tracking",
+        # "search.highlight",
+        "search.share",
+        "toc.follow",
+        "toc.sticky",
+        "content.tabs.link",
+        "announce.dismiss",
+    ],
+    "palette": [
+        {
+            "media": "(prefers-color-scheme: light)",
+            "scheme": "default",
+            "primary": "light-blue",
+            "accent": "indigo",
+            "toggle": {
+                "icon": "material/lightbulb-outline",
+                "name": "Switch to dark mode",
+            },
+        },
+        {
+            "media": "(prefers-color-scheme: dark)",
+            "scheme": "slate",
+            "primary": "indigo",
+            "accent": "deep-purple",
+            "toggle": {
+                "icon": "material/lightbulb",
+                "name": "Switch to light mode",
+            },
+        },
+    ],
+    # BEGIN: version_dropdown
+    "version_dropdown": True,
+    "version_info": [
+        {
+            "version": "https://temporai.readthedocs.io/en/latest/",
+            "title": "ReadTheDocs",
+            "aliases": [],
+        },
+        # {
+        #     "version": "https://jbms.github.io/sphinx-immaterial",
+        #     "title": "Github Pages",
+        #     "aliases": [],
+        # },
+    ],
+    # END: version_dropdown
+    "toc_title_is_page_title": True,
+    # BEGIN: social icons
+    "social": [
+        {
+            "icon": "fontawesome/brands/github",
+            "link": "https://github.com/vanderschaarlab/temporai-clinic/",
+            "name": "Source on github.com",
+        },
+        # TODO: Uncomment once released.
+        # {
+        #     "icon": "fontawesome/brands/python",
+        #     "link": "https://pypi.org/project/temporai-clinic/",
+        # },
+    ],
+    # END: social icons
+}
 
 # Add any paths that contain custom themes here, relative to this directory.
 # html_theme_path = []
@@ -220,7 +299,7 @@ html_theme_options = {"sidebar_width": "300px", "page_width": "1200px"}
 
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
-# html_logo = ""
+html_logo = "assets/TemporAI_Clinic_Logo_Icon.ico"
 
 # The name of an image file (within the static path) to use as favicon of the
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
