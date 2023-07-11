@@ -1,13 +1,15 @@
 import abc
-from typing import Any, Callable, ClassVar, Dict, List, Optional
+from typing import Any, Callable, ClassVar, Dict, List, NamedTuple, Optional
 
 import streamlit as st
 from pydantic import BaseModel
 from typing_extensions import Literal
 
-from tempor.clinic.const import STATE_KEYS
+from tempor.clinic.const import STATE_KEYS, DataModality
 
 DataType = Literal["int", "float", "categorical", "binary"]
+
+DataDefsCollectionDict = Dict[DataModality, Dict[str, Dict]]
 
 
 class DataDef(BaseModel, abc.ABC):
@@ -38,10 +40,6 @@ class DataDef(BaseModel, abc.ABC):
         value = self.process_db_to_input(value)
         return self._render_widget(value=value)
 
-    # def render_add_widget(self) -> Any:
-    #     default = self._get_default_value()
-    #     return self._render_widget(value=default)
-
     def process_db_to_input(self, value: Any) -> Any:
         if self.transform_db_to_input is not None:
             value = self.transform_db_to_input(value)
@@ -51,6 +49,12 @@ class DataDef(BaseModel, abc.ABC):
         if self.transform_input_to_db is not None:
             value = self.transform_input_to_db(value)
         return self._default_transform_input_to_db(value)
+
+
+class DataDefsCollection(NamedTuple):
+    static: Dict[str, DataDef]
+    temporal: Dict[str, DataDef]
+    event: Dict[str, DataDef]
 
 
 class IntDef(DataDef):
@@ -150,7 +154,7 @@ class BinaryDef(DataDef):
         return bool(value)
 
 
-def parse_data_defs(data_defs: Dict[str, Dict]) -> Dict[str, DataDef]:
+def _parse_data_defs_dict(data_defs: Dict[str, Dict]) -> Dict[str, DataDef]:
     parsed: Dict[str, DataDef] = dict()
     for feature_name, data_def in data_defs.items():
         if data_def["data_type"] == "int":
@@ -162,3 +166,11 @@ def parse_data_defs(data_defs: Dict[str, Dict]) -> Dict[str, DataDef]:
         elif data_def["data_type"] == "binary":
             parsed[feature_name] = BinaryDef(feature_name=feature_name, **data_def)
     return parsed
+
+
+def parse_data_defs(data_defs_raw: DataDefsCollectionDict) -> DataDefsCollection:
+    return DataDefsCollection(
+        static=_parse_data_defs_dict(data_defs_raw["static"]) if "static" in data_defs_raw else dict(),
+        temporal=_parse_data_defs_dict(data_defs_raw["temporal"]) if "temporal" in data_defs_raw else dict(),
+        event=_parse_data_defs_dict(data_defs_raw["event"]) if "event" in data_defs_raw else dict(),
+    )

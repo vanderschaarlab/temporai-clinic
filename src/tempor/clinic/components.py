@@ -1,5 +1,6 @@
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional
+import time
+from typing import TYPE_CHECKING, List, NamedTuple, Optional
 
 import pandas as pd
 import streamlit as st
@@ -7,12 +8,12 @@ from streamlit_extras import add_vertical_space
 
 from . import db_utils
 from .app_state import AppState
-from .const import DEFAULTS, STATE_KEYS
+from .const import DEFAULTS, STATE_KEYS, DataSample
 
 if TYPE_CHECKING:
     from deta import _Base as DetaBase
 
-    from .data_def import DataDef
+    from .data_def import DataDefsCollection
 
 
 class AppSettings(NamedTuple):
@@ -75,7 +76,7 @@ def _delete_current_example(app_state: AppState, db: "DetaBase"):
     app_state.current_example = None
 
 
-def _add_new_sample(app_state: AppState, db: "DetaBase", key: str, data_defs: Dict[str, "DataDef"]):
+def _add_new_sample(app_state: AppState, db: "DetaBase", key: str, data_defs: "DataDefsCollection"):
     db_utils.add_sample(db=db, key=key, data_defs=data_defs)
     app_state.current_example = key
 
@@ -84,13 +85,24 @@ def sample_selector(
     app_settings: AppSettings,
     app_state: AppState,
     db: "DetaBase",
-    data_defs: Dict[str, "DataDef"],
+    data_defs: "DataDefsCollection",
     sample_keys: List[str],  # TODO: Is this needed here like this? Rethink.
-) -> Dict[str, Any]:
+) -> DataSample:
     col_patient_select, col_add, col_delete, _ = st.columns([0.8, 0.2 / 3, 0.2 / 3, 0.2 / 3])
 
+    # Special case: no samples in database - create one. ---
+    no_data_found = len(sample_keys) == 0
+    if no_data_found:
+        new_key = db_utils.generate_new_sample_key()
+        with st.container():
+            st.error(f"No data found, adding first {app_settings.example_name}, ID={new_key}...")
+        _add_new_sample(app_state=app_state, db=db, key=new_key, data_defs=data_defs)
+        time.sleep(3)
+        st.experimental_rerun()
+    # Special case: [END] ---
+
     with col_patient_select:
-        print("What's app_state.current_example", app_state.current_example)
+        # print("What's app_state.current_example", app_state.current_example)
         sample_selector_key = "sample_selector"
         st.selectbox(
             label=app_settings.example_name.capitalize(),
@@ -103,7 +115,7 @@ def sample_selector(
         if app_state.current_example is None:
             app_state.current_example = sample_keys[0]
 
-        example_data: Dict[str, Any] = db_utils.get_sample(key=app_state.current_example, db=db, data_defs=data_defs)
+        data_sample = db_utils.get_sample(key=app_state.current_example, db=db, data_defs=data_defs)
 
     with col_add:
         add_vertical_space.add_vertical_space(2)
@@ -168,28 +180,30 @@ def sample_selector(
                 app_state.example_state = "show"
         st.markdown("---")
 
-    return example_data
+    return data_sample
 
 
-def _update_sample_static_data(app_state: AppState, db: "DetaBase", data_defs: Dict[str, "DataDef"]):
+def _update_sample_static_data(app_state: AppState, db: "DetaBase", data_defs: "DataDefsCollection"):
     current_sample = app_state.current_example
     if current_sample is None:
         raise RuntimeError("`current_sample` was `None`")
 
-    sample_data = dict()
-    for field_name in data_defs.keys():
+    static = dict()
+    for field_name in data_defs.static.keys():
         key = f"{STATE_KEYS.data_static_field_prefix}_{field_name}"
-        sample_data[field_name] = st.session_state[key]
+        static[field_name] = st.session_state[key]
 
-    db_utils.update_sample(db=db, key=current_sample, sample_data=sample_data)
+    data_sample = DataSample(static=static, temporal=[], event=[])
+
+    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample)
 
 
 def static_data_table(
     app_settings: AppSettings,
     app_state: AppState,
     db: "DetaBase",
-    data_defs: Dict[str, "DataDef"],
-    sample_data: Dict[str, Any],
+    data_defs: "DataDefsCollection",
+    data_sample: DataSample,
 ) -> None:
     col_static_title, col_edit, col_cancel_edit, _ = st.columns([0.3, 0.2 / 3, 0.2, 1 - (2 * 0.2 + 0.2 / 3)])
 
@@ -211,17 +225,17 @@ def static_data_table(
 
     if app_state.example_state in ("show", "delete", "add"):
         sample_df_dict = {"Record": [], "Value": []}  # type: ignore [var-annotated]
-        for field_name, value in sample_data.items():
+        for field_name, value in data_sample.static.items():
             if field_name != "key":  # Skip the record key.
-                sample_df_dict["Record"].append(data_defs[field_name].readable_name)
+                sample_df_dict["Record"].append(data_defs.static[field_name].readable_name)
                 sample_df_dict["Value"].append(value)
         sample_df = pd.DataFrame(sample_df_dict).set_index("Record", drop=True)
         st.table(sample_df)
 
     elif app_state.example_state == "edit":
         with st.form("form"):
-            for field_name, data_def in data_defs.items():
-                value = sample_data[field_name]
+            for field_name, data_def in data_defs.static.items():
+                value = data_sample.static[field_name]
                 data_def.render_edit_widget(value)
             st.form_submit_button(
                 "Update",

@@ -1,6 +1,9 @@
-from typing import NamedTuple
+from typing import Any, Dict, List, NamedTuple
 
+from pydantic import BaseModel
 from typing_extensions import Literal
+
+DataModality = Literal["static", "temporal", "event"]
 
 ExampleStates = Literal["show", "add", "edit", "delete"]
 ExampleEditStates = Literal["edit_static", "edit_temporal", "edit_event"]
@@ -26,3 +29,9 @@ class Defaults(NamedTuple):
 
 DEFAULTS = Defaults()
 STATE_KEYS = SessionStateKeys()
+
+
+class DataSample(BaseModel):
+    static: Dict[str, Any]
+    temporal: List[Dict[str, Any]]
+    event: List[Dict[str, Any]]
