@@ -5,7 +5,7 @@ import streamlit as st
 from pydantic import BaseModel
 from typing_extensions import Literal
 
-from tempor.clinic.const import STATE_KEYS, DataDefsCollectionDict, DataModality
+from tempor.clinic.const import DEFAULTS, STATE_KEYS, DataDefsCollectionDict, DataModality
 
 DataType = Literal["int", "float", "categorical", "binary", "time_index"]
 TimeIndexType = Literal["date", "int", "float"]
@@ -13,7 +13,9 @@ TimeIndexType = Literal["date", "int", "float"]
 
 def get_widget_st_key(field_def: "FieldDef") -> str:
     data_or_time_index = (
-        STATE_KEYS.time_index_prefix if field_def.data_type == "time_index" else STATE_KEYS.data_field_prefix
+        STATE_KEYS.time_index_prefix
+        if field_def.data_type == DEFAULTS.time_index_field
+        else STATE_KEYS.data_field_prefix
     )
     return f"{data_or_time_index}_{field_def.data_modality}_{field_def.feature_name}"
 
@@ -216,11 +218,11 @@ def _parse_field_defs_dict(field_defs: Dict[str, Dict], data_modality: DataModal
 
 def parse_field_defs(field_defs_raw: DataDefsCollectionDict) -> FieldDefsCollection:
     if "temporal" in field_defs_raw:
-        if "time_index" not in field_defs_raw["temporal"]:
+        if DEFAULTS.time_index_field not in field_defs_raw["temporal"]:
             raise ValueError("'time_index' key must be present in field defs -> temporal")
         if (
-            "time_index" in field_defs_raw["temporal"]
-            and field_defs_raw["temporal"]["time_index"]["data_type"] != "time_index"
+            DEFAULTS.time_index_field in field_defs_raw["temporal"]
+            and field_defs_raw["temporal"][DEFAULTS.time_index_field]["data_type"] != DEFAULTS.time_index_field
         ):
             raise ValueError("'time_index' field def must have 'data_type' == 'time_index'")
         # TODO: time index must be first in the dict.

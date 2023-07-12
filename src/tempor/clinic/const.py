@@ -34,6 +34,8 @@ class Defaults(NamedTuple):
     assets_dir: str = "./assets/"
     logo: str = "TemporAI_Clinic_Logo.png"
     icon: str = "TemporAI_Clinic_Logo_Icon.ico"
+    # Special fields:
+    time_index_field: str = "time_index"
     # Streamlit component keys:
     key_sample_selector: str = "sample_selector"
     key_edit_form_static: str = "edit_form_static"

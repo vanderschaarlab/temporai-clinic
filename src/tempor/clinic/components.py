@@ -263,7 +263,7 @@ def _update_sample_temporal_data(
     # raise a validation "error".
     time_indexes = _get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal)
     existing_time_indexes = _remove_ith_element(time_indexes, current_timestep)
-    if temporal["time_index"] in existing_time_indexes:
+    if temporal[DEFAULTS.time_index_field] in existing_time_indexes:
         validation_error_msg = f"Time index {temporal['time_index']} already exists, choose a different time index"
         _show_validation_error(validation_error_container, msg=validation_error_msg)
         return
@@ -273,10 +273,10 @@ def _update_sample_temporal_data(
 
     # --- --- ---
     # In case the newly added time-step is not in the same position in the array of timesteps, re-sort the timesteps.
-    new_time_index = temporal["time_index"]
+    new_time_index = temporal[DEFAULTS.time_index_field]
     time_indexes = _get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal)
     time_indexes = sorted(time_indexes)
-    temp_dict = {x["time_index"]: x for x in data_sample.temporal}
+    temp_dict = {x[DEFAULTS.time_index_field]: x for x in data_sample.temporal}
     reordered = [temp_dict[ti] for ti in time_indexes]
     current_timestep = time_indexes.index(new_time_index)
     data_sample.temporal = reordered
@@ -302,7 +302,7 @@ def _add_sample_temporal_data(
         raise RuntimeError("`current_sample` was `None`")
 
     new_timestep = field_def.get_default(field_defs.temporal)
-    new_timestep["time_index"] = new_time_index
+    new_timestep[DEFAULTS.time_index_field] = new_time_index
     data_sample.temporal += [new_timestep]
 
     data_sample = DataSample(static=data_sample.static, temporal=data_sample.temporal, event=data_sample.event)
@@ -386,7 +386,7 @@ def static_data_table(
 
 
 def _get_temporal_data_time_indexes(data_sample_temporal: List[Dict[str, Any]]) -> List:
-    return [x["time_index"] for x in data_sample_temporal]
+    return [x[DEFAULTS.time_index_field] for x in data_sample_temporal]
 
 
 def _set_current_timestep(app_state: AppState, data_sample: DataSample, timestep_selector_key: str):
@@ -397,7 +397,7 @@ def _set_current_timestep(app_state: AppState, data_sample: DataSample, timestep
 
 def _generate_new_time_index(field_defs: field_def.FieldDefsCollection, data_sample: DataSample) -> Any:
     max_time_index = max(_get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal))
-    time_index_def = field_defs.temporal["time_index"]
+    time_index_def = field_defs.temporal[DEFAULTS.time_index_field]
     if not isinstance(time_index_def, field_def.TimeIndexDef):
         raise RuntimeError(f"Time index field def was not an instance of {field_def.TimeIndexDef.__name__}")
     return time_index_def.get_next(max_time_index)
