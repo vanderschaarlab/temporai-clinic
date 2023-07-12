@@ -230,7 +230,7 @@ def _update_sample_static_data(
 
     data_sample = DataSample(static=static, temporal=data_sample.temporal, event=data_sample.event)
 
-    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample)
+    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample, field_defs=field_defs)
 
     app_state.interaction_state = "showing"
 
@@ -277,6 +277,7 @@ def _update_sample_temporal_data(
     # In case the newly added time-step is not in the same position in the array of timesteps, re-sort the timesteps.
     new_time_index = temporal[DEFAULTS.time_index_field]
     time_indexes = _get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal)
+    print(time_indexes)
     time_indexes = sorted(time_indexes)
     temp_dict = {x[DEFAULTS.time_index_field]: x for x in data_sample.temporal}
     reordered = [temp_dict[ti] for ti in time_indexes]
@@ -286,7 +287,7 @@ def _update_sample_temporal_data(
 
     data_sample = DataSample(static=data_sample.static, temporal=data_sample.temporal, event=data_sample.event)
 
-    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample)
+    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample, field_defs=field_defs)
 
     app_state.current_timestep = current_timestep
     app_state.interaction_state = "showing"
@@ -309,7 +310,7 @@ def _add_sample_temporal_data(
 
     data_sample = DataSample(static=data_sample.static, temporal=data_sample.temporal, event=data_sample.event)
 
-    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample)
+    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample, field_defs=field_defs)
 
     new_timestep_idx = len(data_sample.temporal) - 1  # Last timestep is the newly-added timestep.
     app_state.current_timestep = new_timestep_idx
@@ -319,6 +320,7 @@ def _add_sample_temporal_data(
 def _delete_sample_temporal_data(
     app_state: AppState,
     db: "DetaBase",
+    field_defs: field_def.FieldDefsCollection,
     data_sample: DataSample,
 ):
     current_sample = app_state.current_sample
@@ -338,7 +340,7 @@ def _delete_sample_temporal_data(
 
     data_sample = DataSample(static=data_sample.static, temporal=data_sample.temporal, event=data_sample.event)
 
-    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample)
+    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample, field_defs=field_defs)
 
     # Fall to the next or last time step after deletion:
     new_timestep_idx = min(current_timestep, len(data_sample.temporal) - 1)
@@ -347,11 +349,15 @@ def _delete_sample_temporal_data(
     app_state.interaction_state = "showing"
 
 
+def _format_with_field_formatting(value: Any, fd: field_def.FieldDef) -> str:
+    return ("{0" + fd.get_formatting() + "}").format(value)
+
+
 def _prepare_data_table(data: Dict[str, Any], field_defs: Dict[str, field_def.FieldDef]) -> pd.DataFrame:
     sample_df_dict = {"Record": [], "Value": []}  # type: ignore [var-annotated]
     for field_name, value in data.items():
         sample_df_dict["Record"].append(field_defs[field_name].readable_name)
-        sample_df_dict["Value"].append(("{0" + field_defs[field_name].get_formatting() + "}").format(value))
+        sample_df_dict["Value"].append(_format_with_field_formatting(value, field_defs[field_name]))
     return pd.DataFrame(sample_df_dict).set_index("Record", drop=True)
 
 
@@ -466,6 +472,7 @@ def temporal_data_table(
             index=app_state.current_timestep,
             on_change=_set_current_timestep,
             kwargs=dict(app_state=app_state, data_sample=data_sample, timestep_selector_key=timestep_selector_key),
+            format_func=lambda x: _format_with_field_formatting(x, field_defs.temporal[DEFAULTS.time_index_field]),
         )
     with col_right:
         disabled = app_state.current_timestep == (n_timesteps - 1)
@@ -514,7 +521,9 @@ def temporal_data_table(
             ),
             panel_icon="⚠️",
             confirm_btn_on_click=_delete_sample_temporal_data,
-            confirm_btn_on_click_kwargs=dict(app_state=app_state, db=db, data_sample=data_sample),
+            confirm_btn_on_click_kwargs=dict(
+                app_state=app_state, db=db, data_sample=data_sample, field_defs=field_defs
+            ),
             confirm_btn_help="Confirm deleting the time-step data",
             cancel_btn_on_click=_reset_interaction_state,
             cancel_btn_on_click_kwargs=dict(app_state=app_state),
@@ -530,6 +539,8 @@ def temporal_data_table(
         with st.form(key=DEFAULTS.key_edit_form_temporal):
             for field_name, dd in field_defs.temporal.items():
                 value = data_sample.temporal[app_state.current_timestep][field_name]
+                print(value)
+                print(type(value))
                 dd.render_edit_widget(value)
             st.form_submit_button(
                 "Update",

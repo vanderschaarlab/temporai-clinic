@@ -42,10 +42,12 @@ def get_sample(key: str, db: DetaBase, field_defs: "field_def.FieldDefsCollectio
     raw_data = cast(DataDefsCollectionDict, db.get(key))
 
     static = _sort_fields(sort_key=list(field_defs.static.keys()), fields=raw_data["static"])
-    temporal: Any = _sort_fields_in_array(
-        sort_key=list(field_defs.temporal.keys()), array_of_fields=raw_data["temporal"]
-    )
-    event: Any = _sort_fields_in_array(sort_key=list(field_defs.event.keys()), array_of_fields=raw_data["event"])
+    temporal = _sort_fields_in_array(sort_key=list(field_defs.temporal.keys()), array_of_fields=raw_data["temporal"])
+    event = _sort_fields_in_array(sort_key=list(field_defs.event.keys()), array_of_fields=raw_data["event"])
+
+    static = field_def.process_db_to_input(field_defs=field_defs.static, data=static)
+    temporal = [field_def.process_db_to_input(field_defs=field_defs.temporal, data=x) for x in temporal]
+    event = [field_def.process_db_to_input(field_defs=field_defs.event, data=x) for x in event]
 
     return DataSample(static=static, temporal=temporal, event=event)
 
@@ -54,6 +56,10 @@ def add_empty_sample(db: DetaBase, key: str, field_defs: "field_def.FieldDefsCol
     static = field_def.get_default(field_defs=field_defs.static) if field_defs.static else {}
     temporal: Any = [field_def.get_default(field_defs=field_defs.temporal)] if field_defs.temporal else []
     event: Any = [field_def.get_default(field_defs=field_defs.event)] if field_defs.event else []
+
+    static = field_def.process_input_to_db(field_defs=field_defs.static, data=static)
+    temporal = [field_def.process_input_to_db(field_defs=field_defs.temporal, data=x) for x in temporal]
+    event = [field_def.process_input_to_db(field_defs=field_defs.event, data=x) for x in event]
 
     data_sample = dict(DataSample(static=static, temporal=temporal, event=event))
 
@@ -66,6 +72,12 @@ def delete_sample(db: DetaBase, key: str):
     db.delete(key=key)
 
 
-def update_sample(db: DetaBase, key: str, data_sample: DataSample):
-    print(f"Adding new sample to db.\nkey: {key}\ndata:\n{data_sample}")
-    db.put(dict(data_sample), key=key)
+def update_sample(db: DetaBase, key: str, data_sample: DataSample, field_defs: "field_def.FieldDefsCollection"):
+    static = field_def.process_input_to_db(field_defs=field_defs.static, data=data_sample.static)
+    temporal = [field_def.process_input_to_db(field_defs=field_defs.temporal, data=x) for x in data_sample.temporal]
+    event = [field_def.process_input_to_db(field_defs=field_defs.event, data=x) for x in data_sample.event]
+
+    data_sample_processed = dict(DataSample(static=static, temporal=temporal, event=event))
+
+    print(f"Adding new sample to db.\nkey: {key}\ndata:\n{data_sample_processed}")
+    db.put(dict(data_sample_processed), key=key)

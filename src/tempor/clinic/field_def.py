@@ -1,4 +1,5 @@
 import abc
+import datetime
 from typing import Any, Callable, ClassVar, Dict, List, NamedTuple, Optional
 
 import streamlit as st
@@ -58,7 +59,7 @@ class FieldDef(BaseModel, abc.ABC):
             return self._default_value_formatting()
 
     def render_edit_widget(self, value: Any) -> Any:
-        value = self.process_db_to_input(value)
+        # value = self.process_db_to_input(value)
         return self._render_widget(value=value)
 
     def process_db_to_input(self, value: Any) -> Any:
@@ -210,7 +211,34 @@ class FloatTimeIndexDef(FloatDef, TimeIndexDef):
         return value + 1.0
 
 
-# TODO: Data time index.
+class DateTimeIndexDef(TimeIndexDef):
+    time_index_type: ClassVar[TimeIndexType] = "date"
+
+    min_value: Optional[datetime.date] = None
+    max_value: Optional[datetime.date] = None
+
+    def _default_value_formatting(self) -> str:
+        return ":%Y-%m-%d"
+
+    def _render_widget(self, value: datetime.date) -> Any:
+        return st.date_input(
+            label=self.readable_name,
+            key=get_widget_st_key(self),
+            max_value=self.max_value,
+            min_value=self.min_value,
+        )
+
+    def get_default_value(self) -> datetime.date:
+        return datetime.datetime.now().date()
+
+    def get_next(self, value: datetime.date) -> datetime.date:
+        return value + datetime.timedelta(days=1)
+
+    def _default_transform_db_to_input(self, value: str) -> datetime.date:
+        return datetime.datetime.fromisoformat(value).date()
+
+    def _default_transform_input_to_db(self, value: datetime.date) -> str:
+        return value.strftime("%Y-%m-%d")
 
 
 class ComputedDef(FieldDef):
@@ -253,6 +281,10 @@ def _parse_field_defs_dict(field_defs: Dict[str, Dict], data_modality: DataModal
                 )
             elif field_def["time_index_type"] == "float":
                 parsed[feature_name] = FloatTimeIndexDef(
+                    feature_name=feature_name, data_modality=data_modality, **field_def
+                )
+            elif field_def["time_index_type"] == "date":
+                parsed[feature_name] = DateTimeIndexDef(
                     feature_name=feature_name, data_modality=data_modality, **field_def
                 )
             else:
@@ -323,7 +355,7 @@ def update(field_defs: Dict[str, FieldDef], session_state: Any) -> Dict[str, Dic
     for field_name, field_def in field_defs.items():
         key = get_widget_st_key(field_def)
         if field_def.data_type != "computed":
-            data_sample[field_name] = field_def.process_input_to_db(session_state[key])
+            data_sample[field_name] = session_state[key]
     # Update computed fields:
     for field_name, field_def in field_defs.items():
         if field_def.data_type == "computed":
@@ -332,3 +364,17 @@ def update(field_defs: Dict[str, FieldDef], session_state: Any) -> Dict[str, Dic
             data_sample[field_name] = field_def.compute(data_sample)
 
     return data_sample
+
+
+def process_db_to_input(field_defs: Dict[str, FieldDef], data: Dict[str, Dict]) -> Dict[str, Dict]:
+    data_processed = dict()
+    for field_name, field_def in field_defs.items():
+        data_processed[field_name] = field_def.process_db_to_input(data[field_name])
+    return data_processed
+
+
+def process_input_to_db(field_defs: Dict[str, FieldDef], data: Dict[str, Dict]) -> Dict[str, Dict]:
+    data_processed = dict()
+    for field_name, field_def in field_defs.items():
+        data_processed[field_name] = field_def.process_input_to_db(data[field_name])
+    return data_processed
