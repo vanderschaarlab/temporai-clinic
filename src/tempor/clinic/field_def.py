@@ -323,7 +323,7 @@ def update(field_defs: Dict[str, FieldDef], session_state: Any) -> Dict[str, Dic
     for field_name, field_def in field_defs.items():
         key = get_widget_st_key(field_def)
         if field_def.data_type != "computed":
-            data_sample[field_name] = session_state[key]
+            data_sample[field_name] = field_def.process_input_to_db(session_state[key])
     # Update computed fields:
     for field_name, field_def in field_defs.items():
         if field_def.data_type == "computed":
