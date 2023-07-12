@@ -437,7 +437,7 @@ def temporal_data_table(
         if add_btn:
             app_state.interaction_state = "adding_temporal_data"
     with col_delete:
-        delete_btn = st.button("❌", help=f"Delete {app_settings.example_name} time-step", disabled=n_timesteps == 0)
+        delete_btn = st.button("❌", help=f"Delete {app_settings.example_name} time-step", disabled=n_timesteps == 1)
         if delete_btn:
             app_state.interaction_state = "deleting_temporal_data"
 
