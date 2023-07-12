@@ -4,8 +4,6 @@ import streamlit as st
 
 from . import const
 
-# from typing import TYPE_CHECKING
-
 
 class AppState:
     def __init__(self) -> None:

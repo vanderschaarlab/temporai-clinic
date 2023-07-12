@@ -26,6 +26,7 @@ class FieldDef(BaseModel, abc.ABC):
     data_modality: DataModality
     feature_name: str
     readable_name: str
+    formatting: Optional[str] = None
     transform_input_to_db: Optional[Callable] = None
     transform_db_to_input: Optional[Callable] = None
 
@@ -44,6 +45,16 @@ class FieldDef(BaseModel, abc.ABC):
     @abc.abstractmethod
     def _default_transform_input_to_db(self, value: Any) -> Any:
         ...
+
+    @abc.abstractmethod
+    def _default_value_formatting(self) -> str:
+        ...
+
+    def get_formatting(self) -> str:
+        if self.formatting is not None:
+            return self.formatting
+        else:
+            return self._default_value_formatting()
 
     def render_edit_widget(self, value: Any) -> Any:
         value = self.process_db_to_input(value)
@@ -68,6 +79,9 @@ class FieldDefsCollection(NamedTuple):
 
 class IntDef(FieldDef):
     data_type: ClassVar[DataType] = "int"
+
+    def _default_value_formatting(self) -> str:
+        return ":n"
 
     min_value: Optional[int] = None
     max_value: Optional[int] = None
@@ -96,6 +110,9 @@ class IntDef(FieldDef):
 class FloatDef(FieldDef):
     data_type: ClassVar[DataType] = "float"
 
+    def _default_value_formatting(self) -> str:
+        return ":.2f"
+
     min_value: Optional[float] = None
     max_value: Optional[float] = None
     step: Optional[float] = None
@@ -123,6 +140,9 @@ class FloatDef(FieldDef):
 class CategoricalDef(FieldDef):
     data_type: ClassVar[DataType] = "categorical"
 
+    def _default_value_formatting(self) -> str:
+        return ""
+
     options: List[str]
 
     def _render_widget(self, value: str) -> Any:
@@ -145,6 +165,9 @@ class CategoricalDef(FieldDef):
 
 class BinaryDef(FieldDef):
     data_type: ClassVar[DataType] = "binary"
+
+    def _default_value_formatting(self) -> str:
+        return ""
 
     def _render_widget(self, value: bool) -> Any:
         return st.checkbox(

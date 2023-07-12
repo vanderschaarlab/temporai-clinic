@@ -353,6 +353,14 @@ def _delete_sample_temporal_data(
     app_state.interaction_state = "showing"
 
 
+def _prepare_data_table(data: Dict[str, Any], field_defs: Dict[str, field_def.FieldDef]) -> pd.DataFrame:
+    sample_df_dict = {"Record": [], "Value": []}  # type: ignore [var-annotated]
+    for field_name, value in data.items():
+        sample_df_dict["Record"].append(field_defs[field_name].readable_name)
+        sample_df_dict["Value"].append(("{0" + field_defs[field_name].get_formatting() + "}").format(value))
+    return pd.DataFrame(sample_df_dict).set_index("Record", drop=True)
+
+
 def static_data_table(
     app_settings: AppSettings,
     app_state: AppState,
@@ -370,11 +378,7 @@ def static_data_table(
             app_state.interaction_state = "editing_static_data"
 
     if app_state.interaction_state != "editing_static_data":
-        sample_df_dict = {"Record": [], "Value": []}  # type: ignore [var-annotated]
-        for field_name, value in data_sample.static.items():
-            sample_df_dict["Record"].append(field_defs.static[field_name].readable_name)
-            sample_df_dict["Value"].append(value)
-        sample_df = pd.DataFrame(sample_df_dict).set_index("Record", drop=True)
+        sample_df = _prepare_data_table(data=data_sample.static, field_defs=field_defs.static)
         st.table(sample_df)
     else:
         with st.form(key=DEFAULTS.key_edit_form_static):
@@ -524,12 +528,10 @@ def temporal_data_table(
             button_cols_split=[0.3, 0.3, 0.4],
         )
     if app_state.interaction_state != "editing_temporal_data":
-        sample_df_dict = {"Record": [], "Value": []}  # type: ignore [var-annotated]
-        for field_name, value in data_sample.temporal[app_state.current_timestep].items():
-            sample_df_dict["Record"].append(field_defs.temporal[field_name].readable_name)
-            sample_df_dict["Value"].append(value)
-        sample_df = pd.DataFrame(sample_df_dict).set_index("Record", drop=True)
-        st.table(sample_df)
+        timestep_df = _prepare_data_table(
+            data=data_sample.temporal[app_state.current_timestep], field_defs=field_defs.temporal
+        )
+        st.table(timestep_df)
     else:
         with st.form(key=DEFAULTS.key_edit_form_temporal):
             for field_name, dd in field_defs.temporal.items():
