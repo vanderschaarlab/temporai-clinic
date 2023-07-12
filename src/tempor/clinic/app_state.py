@@ -9,23 +9,33 @@ from . import const
 
 class AppState:
     def __init__(self) -> None:
-        if const.STATE_KEYS.cur_example not in st.session_state:
-            st.session_state[const.STATE_KEYS.cur_example] = None
-        if const.STATE_KEYS.example_state not in st.session_state:
-            st.session_state[const.STATE_KEYS.example_state] = "show"
+        if const.STATE_KEYS.current_sample not in st.session_state:
+            st.session_state[const.STATE_KEYS.current_sample] = None
+        if const.STATE_KEYS.current_timestep not in st.session_state:
+            st.session_state[const.STATE_KEYS.current_timestep] = 0
+        if const.STATE_KEYS.interaction_state not in st.session_state:
+            st.session_state[const.STATE_KEYS.interaction_state] = "showing"
 
     @property
-    def current_example(self) -> Optional[str]:
-        return st.session_state[const.STATE_KEYS.cur_example]
+    def current_sample(self) -> Optional[str]:
+        return st.session_state[const.STATE_KEYS.current_sample]
 
-    @current_example.setter
-    def current_example(self, value: Optional[str]) -> None:
-        st.session_state[const.STATE_KEYS.cur_example] = value
+    @current_sample.setter
+    def current_sample(self, value: Optional[str]) -> None:
+        st.session_state[const.STATE_KEYS.current_sample] = value
 
     @property
-    def example_state(self) -> const.ExampleStates:
-        return st.session_state[const.STATE_KEYS.example_state]
+    def current_timestep(self) -> int:
+        return st.session_state[const.STATE_KEYS.current_timestep]
 
-    @example_state.setter
-    def example_state(self, value: const.ExampleStates) -> None:
-        st.session_state[const.STATE_KEYS.example_state] = value
+    @current_timestep.setter
+    def current_timestep(self, value: int) -> None:
+        st.session_state[const.STATE_KEYS.current_timestep] = value
+
+    @property
+    def interaction_state(self) -> const.InteractionState:
+        return st.session_state[const.STATE_KEYS.interaction_state]
+
+    @interaction_state.setter
+    def interaction_state(self, value: const.InteractionState) -> None:
+        st.session_state[const.STATE_KEYS.interaction_state] = value

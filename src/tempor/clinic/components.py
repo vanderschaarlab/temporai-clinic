@@ -1,19 +1,18 @@
 import os
 import time
-from typing import TYPE_CHECKING, List, NamedTuple, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional
 
 import pandas as pd
 import streamlit as st
 from streamlit_extras import add_vertical_space
+from typing_extensions import Literal
 
-from . import db_utils
+from . import data_def, db_utils
 from .app_state import AppState
-from .const import DEFAULTS, STATE_KEYS, DataSample
+from .const import DEFAULTS, DataSample
 
 if TYPE_CHECKING:
     from deta import _Base as DetaBase
-
-    from .data_def import DataDefsCollection
 
 
 class AppSettings(NamedTuple):
@@ -65,27 +64,72 @@ def sidebar(
 
 
 def _set_current_example(app_state: AppState, sample_selector_key: str):
-    app_state.current_example = st.session_state[sample_selector_key]
+    app_state.current_sample = st.session_state[sample_selector_key]
 
 
 def _delete_current_example(app_state: AppState, db: "DetaBase"):
-    current_sample = app_state.current_example
+    current_sample = app_state.current_sample
     if current_sample is None:
         raise RuntimeError("`current_sample` was `None`")
     db_utils.delete_sample(db=db, key=current_sample)
-    app_state.current_example = None
+    app_state.current_sample = None
 
 
-def _add_new_sample(app_state: AppState, db: "DetaBase", key: str, data_defs: "DataDefsCollection"):
-    db_utils.add_sample(db=db, key=key, data_defs=data_defs)
-    app_state.current_example = key
+def _add_new_sample(app_state: AppState, db: "DetaBase", key: str, data_defs: data_def.DataDefsCollection):
+    db_utils.add_empty_sample(db=db, key=key, data_defs=data_defs)
+    app_state.current_sample = key
+
+
+StPanel = Literal["error", "warning", "info"]
+PANEL_TYPES: Dict[StPanel, Callable] = {
+    "error": st.error,
+    "warning": st.warning,
+    "info": st.info,
+}
+
+
+def faux_confirm_modal(
+    panel_type: StPanel,
+    panel_text: str,
+    panel_icon: str,
+    confirm_btn_on_click: Callable,
+    confirm_btn_on_click_kwargs: Dict,
+    confirm_btn_help: str,
+    cancel_btn_on_click: Callable,
+    cancel_btn_on_click_kwargs: Dict,
+    cancel_btn_help: str,
+    button_cols_split=(0.2, 0.2, 0.6),
+):
+    st.markdown("---")
+    PANEL_TYPES[panel_type](panel_text, icon=panel_icon)
+    col_confirm_btn, col_cancel_btn, _ = st.columns(button_cols_split)
+    with col_confirm_btn:
+        st.button(
+            "Confirm",
+            type="primary",
+            on_click=confirm_btn_on_click,
+            kwargs=confirm_btn_on_click_kwargs,
+            help=confirm_btn_help,
+        )
+    with col_cancel_btn:
+        st.button(
+            "Cancel",
+            on_click=cancel_btn_on_click,
+            kwargs=cancel_btn_on_click_kwargs,
+            help=cancel_btn_help,
+        )
+    st.markdown("---")
+
+
+def _reset_interaction_state(app_state: AppState):
+    app_state.interaction_state = "showing"
 
 
 def sample_selector(
     app_settings: AppSettings,
     app_state: AppState,
     db: "DetaBase",
-    data_defs: "DataDefsCollection",
+    data_defs: data_def.DataDefsCollection,
     sample_keys: List[str],  # TODO: Is this needed here like this? Rethink.
 ) -> DataSample:
     col_patient_select, col_add, col_delete, _ = st.columns([0.8, 0.2 / 3, 0.2 / 3, 0.2 / 3])
@@ -102,20 +146,19 @@ def sample_selector(
     # Special case: [END] ---
 
     with col_patient_select:
-        # print("What's app_state.current_example", app_state.current_example)
-        sample_selector_key = "sample_selector"
+        sample_selector_key = DEFAULTS.key_sample_selector
         st.selectbox(
             label=app_settings.example_name.capitalize(),
             options=sample_keys,
-            index=sample_keys.index(app_state.current_example) if app_state.current_example is not None else 0,
+            index=sample_keys.index(app_state.current_sample) if app_state.current_sample is not None else 0,
             key=sample_selector_key,
             on_change=_set_current_example,
             kwargs=dict(app_state=app_state, sample_selector_key=sample_selector_key),
         )
-        if app_state.current_example is None:
-            app_state.current_example = sample_keys[0]
+        if app_state.current_sample is None:
+            app_state.current_sample = sample_keys[0]
 
-        data_sample = db_utils.get_sample(key=app_state.current_example, db=db, data_defs=data_defs)
+        data_sample = db_utils.get_sample(key=app_state.current_sample, db=db, data_defs=data_defs)
 
     with col_add:
         add_vertical_space.add_vertical_space(2)
@@ -125,121 +168,336 @@ def sample_selector(
         delete_btn = st.button("❌", help=f"Delete {app_settings.example_name}")
 
     if add_btn:
-        app_state.example_state = "add"
+        app_state.interaction_state = "adding_sample"
     elif delete_btn:
-        app_state.example_state = "delete"
+        app_state.interaction_state = "deleting_sample"
     else:
-        app_state.example_state = "show"
+        app_state.interaction_state = "showing"
 
-    if app_state.example_state == "delete":
-        st.markdown("---")
-        st.error(
-            f"This action will delete the currently selected {app_settings.example_name} "
-            f"(ID: {app_state.current_example}). "
-            "It is not reversible. Please confirm.",
-            icon="⚠️",
+    if app_state.interaction_state == "deleting_sample":
+        faux_confirm_modal(
+            panel_type="error",
+            panel_text=(
+                f"This action will delete the currently selected {app_settings.example_name} "
+                f"(ID: {app_state.current_sample}). "
+                "It is not reversible. Please confirm."
+            ),
+            panel_icon="⚠️",
+            confirm_btn_on_click=_delete_current_example,
+            confirm_btn_on_click_kwargs=dict(app_state=app_state, db=db),
+            confirm_btn_help=f"Confirm deleting {app_settings.example_name}",
+            cancel_btn_on_click=_reset_interaction_state,
+            cancel_btn_on_click_kwargs=dict(app_state=app_state),
+            cancel_btn_help=f"Cancel deleting {app_settings.example_name}",
         )
-        col_confirm_deletion_btn, col_cancel_deletion_btn, _ = st.columns([0.2, 0.2, 0.6])
-        with col_confirm_deletion_btn:
-            st.button(
-                "Confirm",
-                type="primary",
-                on_click=_delete_current_example,
-                kwargs=dict(app_state=app_state, db=db),
-            )
-        with col_cancel_deletion_btn:
-            cancel_delete_btn = st.button(
-                "Cancel", key="cancel_delete_example", help=f"Cancel deleting {app_settings.example_name}"
-            )
-            if cancel_delete_btn:
-                app_state.example_state = "show"
-        st.markdown("---")
-
-    if app_state.example_state == "add":
-        st.markdown("---")
+    if app_state.interaction_state == "adding_sample":
         new_key = db_utils.generate_new_sample_key()
-        st.info(
-            f"This action will create a new 'empty' {app_settings.example_name} with auto-generated ID: {new_key}. "
-            f"You will be able to use the edit '🖊️' buttons to update the {app_settings.example_name} data. "
-            "Please confirm.",
-            icon="ℹ️",
+        faux_confirm_modal(
+            panel_type="info",
+            panel_text=(
+                f"This action will create a new 'empty' {app_settings.example_name} with auto-generated ID: {new_key}. "
+                f"You will be able to use the edit '🖊️' buttons to update the {app_settings.example_name} data. "
+                "Please confirm."
+            ),
+            panel_icon="ℹ️",
+            confirm_btn_on_click=_add_new_sample,
+            confirm_btn_on_click_kwargs=dict(app_state=app_state, db=db, key=new_key, data_defs=data_defs),
+            confirm_btn_help=f"Confirm adding {app_settings.example_name}",
+            cancel_btn_on_click=_reset_interaction_state,
+            cancel_btn_on_click_kwargs=dict(app_state=app_state),
+            cancel_btn_help=f"Cancel adding {app_settings.example_name}",
         )
-        col_confirm_addition_btn, col_cancel_addition_btn, _ = st.columns([0.2, 0.2, 0.6])
-        with col_confirm_addition_btn:
-            st.button(
-                "Confirm",
-                type="primary",
-                on_click=_add_new_sample,
-                kwargs=dict(app_state=app_state, db=db, key=new_key, data_defs=data_defs),
-            )
-        with col_cancel_addition_btn:
-            cancel_add_btn = st.button(
-                "Cancel", key="cancel_add_example", help=f"Cancel adding {app_settings.example_name}"
-            )
-            if cancel_add_btn:
-                app_state.example_state = "show"
-        st.markdown("---")
 
     return data_sample
 
 
-def _update_sample_static_data(app_state: AppState, db: "DetaBase", data_defs: "DataDefsCollection"):
-    current_sample = app_state.current_example
+def _update_sample_static_data(
+    app_state: AppState, db: "DetaBase", data_defs: data_def.DataDefsCollection, data_sample: DataSample
+):
+    current_sample = app_state.current_sample
     if current_sample is None:
         raise RuntimeError("`current_sample` was `None`")
 
     static = dict()
-    for field_name in data_defs.static.keys():
-        key = f"{STATE_KEYS.data_static_field_prefix}_{field_name}"
+    for field_name, dd in data_defs.static.items():
+        key = data_def.get_widget_st_key(dd)
         static[field_name] = st.session_state[key]
 
-    data_sample = DataSample(static=static, temporal=[], event=[])
+    data_sample = DataSample(static=static, temporal=data_sample.temporal, event=data_sample.event)
 
     db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample)
+
+    app_state.interaction_state = "showing"
+
+
+def _update_sample_temporal_data(
+    app_state: AppState, db: "DetaBase", data_defs: data_def.DataDefsCollection, data_sample: DataSample
+):
+    current_sample = app_state.current_sample
+    current_timestep = app_state.current_timestep
+    if current_sample is None:
+        raise RuntimeError("`current_sample` was `None`")
+    if current_timestep is None:
+        raise RuntimeError("`current_timestep` was `None`")
+
+    temporal = dict()
+    for field_name, dd in data_defs.temporal.items():
+        key = data_def.get_widget_st_key(dd)
+        temporal[field_name] = st.session_state[key]
+    data_sample.temporal[current_timestep] = temporal
+
+    data_sample = DataSample(static=data_sample.static, temporal=data_sample.temporal, event=data_sample.event)
+
+    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample)
+
+    app_state.interaction_state = "showing"
+
+
+def _add_sample_temporal_data(
+    app_state: AppState,
+    db: "DetaBase",
+    data_defs: data_def.DataDefsCollection,
+    data_sample: DataSample,
+    new_time_index: Any,
+):
+    current_sample = app_state.current_sample
+    # current_timestep = app_state.current_timestep
+    if current_sample is None:
+        raise RuntimeError("`current_sample` was `None`")
+    # if current_timestep is None:
+    #     raise RuntimeError("`current_timestep` was `None`")
+
+    # TODO: TIME-STEP ORDERING!!!!
+    # TODO: Prevent duplicate time index values.
+    new_timestep = data_def.get_default(data_defs.temporal)
+    new_timestep["time_index"] = new_time_index
+    data_sample.temporal += [new_timestep]
+
+    data_sample = DataSample(static=data_sample.static, temporal=data_sample.temporal, event=data_sample.event)
+
+    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample)
+
+    new_timestep_idx = len(data_sample.temporal) - 1  # Last timestep is the newly-added timestep.
+    app_state.current_timestep = new_timestep_idx
+    app_state.interaction_state = "showing"
+
+
+def _delete_sample_temporal_data(
+    app_state: AppState,
+    db: "DetaBase",
+    data_sample: DataSample,
+):
+    current_sample = app_state.current_sample
+    current_timestep = app_state.current_timestep
+    if current_sample is None:
+        raise RuntimeError("`current_sample` was `None`")
+    if current_timestep is None:
+        raise RuntimeError("`current_timestep` was `None`")
+
+    num_timesteps = len(data_sample.temporal)
+    if num_timesteps == 1:
+        raise RuntimeError("Cannot delete the last remaining time step")
+    if current_timestep < 0 or current_timestep >= num_timesteps:
+        raise RuntimeError(f"Invalid timestep to delete, index: {current_timestep}")
+
+    del data_sample.temporal[current_timestep]
+
+    data_sample = DataSample(static=data_sample.static, temporal=data_sample.temporal, event=data_sample.event)
+
+    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample)
+
+    # Fall to the next or last time step after deletion:
+    new_timestep_idx = min(current_timestep, len(data_sample.temporal) - 1)
+
+    app_state.current_timestep = new_timestep_idx
+    app_state.interaction_state = "showing"
 
 
 def static_data_table(
     app_settings: AppSettings,
     app_state: AppState,
     db: "DetaBase",
-    data_defs: "DataDefsCollection",
+    data_defs: data_def.DataDefsCollection,
     data_sample: DataSample,
 ) -> None:
-    col_static_title, col_edit, col_cancel_edit, _ = st.columns([0.3, 0.2 / 3, 0.2, 1 - (2 * 0.2 + 0.2 / 3)])
+    col_title, col_edit, _ = st.columns([0.3, 0.2 / 3, 1 - (0.3 + 0.2 / 3)])
 
-    with col_static_title:
+    with col_title:
         st.markdown("### Static Data")
     with col_edit:
-        edit_btn = st.button(
-            "🖊️",
-            help=f"Edit {app_settings.example_name} static data",
-            disabled=True if app_state.example_state in ("delete", "add") else False,
-        )
+        edit_btn = st.button("🖊️", help=f"Edit {app_settings.example_name} static data")
         if edit_btn:
-            app_state.example_state = "edit"
-    with col_cancel_edit:
-        if app_state.example_state == "edit":
-            cancel_edit_btn = st.button("Cancel", help=f"Cancel editing {app_settings.example_name} static data")
-            if cancel_edit_btn:
-                app_state.example_state = "show"
+            app_state.interaction_state = "editing_static_data"
 
-    if app_state.example_state in ("show", "delete", "add"):
+    if app_state.interaction_state != "editing_static_data":
         sample_df_dict = {"Record": [], "Value": []}  # type: ignore [var-annotated]
         for field_name, value in data_sample.static.items():
-            if field_name != "key":  # Skip the record key.
-                sample_df_dict["Record"].append(data_defs.static[field_name].readable_name)
-                sample_df_dict["Value"].append(value)
+            sample_df_dict["Record"].append(data_defs.static[field_name].readable_name)
+            sample_df_dict["Value"].append(value)
         sample_df = pd.DataFrame(sample_df_dict).set_index("Record", drop=True)
         st.table(sample_df)
-
-    elif app_state.example_state == "edit":
-        with st.form("form"):
-            for field_name, data_def in data_defs.static.items():
+    else:
+        with st.form(key=DEFAULTS.key_edit_form_static):
+            for field_name, dd in data_defs.static.items():
                 value = data_sample.static[field_name]
-                data_def.render_edit_widget(value)
+                dd.render_edit_widget(value)
             st.form_submit_button(
                 "Update",
                 type="primary",
                 on_click=_update_sample_static_data,
-                kwargs=dict(app_state=app_state, db=db, data_defs=data_defs),
+                kwargs=dict(app_state=app_state, db=db, data_defs=data_defs, data_sample=data_sample),
             )
+        if app_state.interaction_state == "editing_static_data":
+            cancel_edit_btn = st.button("Cancel", help=f"Cancel editing {app_settings.example_name} static data")
+            if cancel_edit_btn:
+                app_state.interaction_state = "showing"
+
+
+def _get_time_indexes(data_sample: DataSample) -> List:
+    return [x["time_index"] for x in data_sample.temporal]
+
+
+def _set_current_timestep(app_state: AppState, data_sample: DataSample, timestep_selector_key: str):
+    app_state.current_timestep = _get_time_indexes(data_sample=data_sample).index(
+        st.session_state[timestep_selector_key]
+    )
+
+
+def _generate_new_time_index(data_defs: data_def.DataDefsCollection, data_sample: DataSample) -> Any:
+    max_time_index = max(_get_time_indexes(data_sample=data_sample))
+    time_index_def = data_defs.temporal["time_index"]
+    if not isinstance(time_index_def, data_def.TimeIndexDef):
+        raise RuntimeError(f"Time index data def was not an instance of {data_def.TimeIndexDef.__name__}")
+    return time_index_def.get_next(max_time_index)
+
+
+def _navigate_to_prev_timestep(app_state: AppState):
+    if app_state.current_timestep > 0:
+        app_state.current_timestep -= 1
+
+
+def _navigate_to_next_timestep(app_state: AppState, n_timesteps: int):
+    if app_state.current_timestep < (n_timesteps - 1):
+        app_state.current_timestep += 1
+
+
+def temporal_data_table(
+    app_settings: AppSettings,
+    app_state: AppState,
+    db: "DetaBase",
+    data_defs: data_def.DataDefsCollection,
+    data_sample: DataSample,
+) -> None:
+    n_timesteps = len(data_sample.temporal)
+
+    col_title, col_edit, col_add, col_delete, _ = st.columns([0.5, 0.4 / 3, 0.4 / 3, 0.4 / 3, 0.1])
+
+    with col_title:
+        st.markdown("### Temporal Data")
+    with col_edit:
+        edit_btn = st.button("🖊️", help=f"Edit {app_settings.example_name} time-step data")
+        if edit_btn:
+            app_state.interaction_state = "editing_temporal_data"
+    with col_add:
+        add_btn = st.button("➕", help=f"Add {app_settings.example_name} time-step")
+        if add_btn:
+            app_state.interaction_state = "adding_temporal_data"
+    with col_delete:
+        delete_btn = st.button("❌", help=f"Delete {app_settings.example_name} time-step", disabled=n_timesteps == 0)
+        if delete_btn:
+            app_state.interaction_state = "deleting_temporal_data"
+
+    if app_state.interaction_state == "adding_temporal_data":
+        new_time_index = _generate_new_time_index(data_defs=data_defs, data_sample=data_sample)
+        faux_confirm_modal(
+            panel_type="info",
+            panel_text=(
+                f"This action will create a new time-step for the {app_settings.example_name} with an auto-generated"
+                f"future time index: {new_time_index}. You will be able to use the edit '🖊️' button to update the "
+                "time-step data. Please confirm."
+            ),
+            panel_icon="ℹ️",
+            confirm_btn_on_click=_add_sample_temporal_data,
+            confirm_btn_on_click_kwargs=dict(
+                app_state=app_state, db=db, data_defs=data_defs, data_sample=data_sample, new_time_index=new_time_index
+            ),
+            confirm_btn_help="Confirm adding new time-step",
+            cancel_btn_on_click=_reset_interaction_state,
+            cancel_btn_on_click_kwargs=dict(app_state=app_state),
+            cancel_btn_help="Cancel adding new time-step",
+            button_cols_split=[0.3, 0.3, 0.4],
+        )
+    if app_state.interaction_state == "deleting_temporal_data":
+        faux_confirm_modal(
+            panel_type="error",
+            panel_text=(
+                "This action will delete the currently selected time-step's data (time index: "
+                f"{data_sample.temporal[app_state.current_timestep]['time_index']})."
+                "It is not reversible. Please confirm."
+            ),
+            panel_icon="⚠️",
+            confirm_btn_on_click=_delete_sample_temporal_data,
+            confirm_btn_on_click_kwargs=dict(app_state=app_state, db=db, data_sample=data_sample),
+            confirm_btn_help="Confirm deleting the time-step data",
+            cancel_btn_on_click=_reset_interaction_state,
+            cancel_btn_on_click_kwargs=dict(app_state=app_state),
+            cancel_btn_help="Cancel deleting the time-step data",
+            button_cols_split=[0.3, 0.3, 0.4],
+        )
+
+    col_left, col_select, col_right, col_steps = st.columns([0.15, 0.4, 0.15, 0.3])
+    with col_left:
+        disabled = app_state.current_timestep == 0
+        st.button(
+            "◀",
+            help="Navigate to the previous time-step" if not disabled else None,
+            disabled=app_state.current_timestep == 0,
+            on_click=_navigate_to_prev_timestep,
+            kwargs=dict(app_state=app_state),
+        )
+    with col_select:
+        timestep_selector_key = "timestep_selector_key"
+        st.selectbox(
+            label="Select time step with time index:",
+            label_visibility="collapsed",
+            key=timestep_selector_key,
+            options=_get_time_indexes(data_sample=data_sample),
+            index=app_state.current_timestep,
+            on_change=_set_current_timestep,
+            kwargs=dict(app_state=app_state, data_sample=data_sample, timestep_selector_key=timestep_selector_key),
+        )
+    with col_right:
+        disabled = app_state.current_timestep == (n_timesteps - 1)
+        st.button(
+            "▶",
+            help="Navigate to the next time-step" if not disabled else None,
+            disabled=app_state.current_timestep == (n_timesteps - 1),
+            on_click=_navigate_to_next_timestep,
+            kwargs=dict(app_state=app_state, n_timesteps=n_timesteps),
+        )
+    with col_steps:
+        add_vertical_space.add_vertical_space(1)
+        st.markdown(f"`timestep: {app_state.current_timestep + 1}/{n_timesteps}`")
+
+    if app_state.interaction_state != "editing_temporal_data":
+        sample_df_dict = {"Record": [], "Value": []}  # type: ignore [var-annotated]
+        for field_name, value in data_sample.temporal[app_state.current_timestep].items():
+            sample_df_dict["Record"].append(data_defs.temporal[field_name].readable_name)
+            sample_df_dict["Value"].append(value)
+        sample_df = pd.DataFrame(sample_df_dict).set_index("Record", drop=True)
+        st.table(sample_df)
+    else:
+        with st.form(key=DEFAULTS.key_edit_form_temporal):
+            for field_name, dd in data_defs.temporal.items():
+                value = data_sample.temporal[app_state.current_timestep][field_name]
+                dd.render_edit_widget(value)
+            st.form_submit_button(
+                "Update",
+                type="primary",
+                on_click=_update_sample_temporal_data,
+                kwargs=dict(app_state=app_state, db=db, data_defs=data_defs, data_sample=data_sample),
+            )
+        if app_state.interaction_state == "editing_temporal_data":
+            cancel_edit_btn = st.button("Cancel", help=f"Cancel editing {app_settings.example_name} temporal data")
+            if cancel_edit_btn:
+                app_state.interaction_state = "showing"
