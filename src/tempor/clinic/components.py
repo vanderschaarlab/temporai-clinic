@@ -230,8 +230,21 @@ def _update_sample_static_data(
     app_state.interaction_state = "showing"
 
 
+def _remove_ith_element(lst: List, i: int):
+    return lst[:i] + lst[i + 1 :]
+
+
+def _show_validation_error(validation_error_container: Any, msg: str):
+    with validation_error_container:
+        st.error(msg, icon="⛔")
+
+
 def _update_sample_temporal_data(
-    app_state: AppState, db: "DetaBase", data_defs: data_def.DataDefsCollection, data_sample: DataSample
+    app_state: AppState,
+    db: "DetaBase",
+    data_defs: data_def.DataDefsCollection,
+    data_sample: DataSample,
+    validation_error_container: Any,
 ):
     current_sample = app_state.current_sample
     current_timestep = app_state.current_timestep
@@ -244,12 +257,36 @@ def _update_sample_temporal_data(
     for field_name, dd in data_defs.temporal.items():
         key = data_def.get_widget_st_key(dd)
         temporal[field_name] = st.session_state[key]
+
+    # --- --- ---
+    # If user sets time index to a time index that is the same as the time index in another existing time-step,
+    # raise a validation "error".
+    time_indexes = _get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal)
+    existing_time_indexes = _remove_ith_element(time_indexes, current_timestep)
+    if temporal["time_index"] in existing_time_indexes:
+        validation_error_msg = f"Time index {temporal['time_index']} already exists, choose a different time index"
+        _show_validation_error(validation_error_container, msg=validation_error_msg)
+        return
+    # --- --- ---
+
     data_sample.temporal[current_timestep] = temporal
+
+    # --- --- ---
+    # In case the newly added time-step is not in the same position in the array of timesteps, re-sort the timesteps.
+    new_time_index = temporal["time_index"]
+    time_indexes = _get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal)
+    time_indexes = sorted(time_indexes)
+    temp_dict = {x["time_index"]: x for x in data_sample.temporal}
+    reordered = [temp_dict[ti] for ti in time_indexes]
+    current_timestep = time_indexes.index(new_time_index)
+    data_sample.temporal = reordered
+    # --- --- ---
 
     data_sample = DataSample(static=data_sample.static, temporal=data_sample.temporal, event=data_sample.event)
 
     db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample)
 
+    app_state.current_timestep = current_timestep
     app_state.interaction_state = "showing"
 
 
@@ -261,14 +298,9 @@ def _add_sample_temporal_data(
     new_time_index: Any,
 ):
     current_sample = app_state.current_sample
-    # current_timestep = app_state.current_timestep
     if current_sample is None:
         raise RuntimeError("`current_sample` was `None`")
-    # if current_timestep is None:
-    #     raise RuntimeError("`current_timestep` was `None`")
 
-    # TODO: TIME-STEP ORDERING!!!!
-    # TODO: Prevent duplicate time index values.
     new_timestep = data_def.get_default(data_defs.temporal)
     new_timestep["time_index"] = new_time_index
     data_sample.temporal += [new_timestep]
@@ -353,18 +385,18 @@ def static_data_table(
                 app_state.interaction_state = "showing"
 
 
-def _get_time_indexes(data_sample: DataSample) -> List:
-    return [x["time_index"] for x in data_sample.temporal]
+def _get_temporal_data_time_indexes(data_sample_temporal: List[Dict[str, Any]]) -> List:
+    return [x["time_index"] for x in data_sample_temporal]
 
 
 def _set_current_timestep(app_state: AppState, data_sample: DataSample, timestep_selector_key: str):
-    app_state.current_timestep = _get_time_indexes(data_sample=data_sample).index(
+    app_state.current_timestep = _get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal).index(
         st.session_state[timestep_selector_key]
     )
 
 
 def _generate_new_time_index(data_defs: data_def.DataDefsCollection, data_sample: DataSample) -> Any:
-    max_time_index = max(_get_time_indexes(data_sample=data_sample))
+    max_time_index = max(_get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal))
     time_index_def = data_defs.temporal["time_index"]
     if not isinstance(time_index_def, data_def.TimeIndexDef):
         raise RuntimeError(f"Time index data def was not an instance of {data_def.TimeIndexDef.__name__}")
@@ -391,6 +423,8 @@ def temporal_data_table(
     n_timesteps = len(data_sample.temporal)
 
     col_title, col_edit, col_add, col_delete, _ = st.columns([0.5, 0.4 / 3, 0.4 / 3, 0.4 / 3, 0.1])
+    col_left, col_select, col_right, col_steps = st.columns([0.15, 0.4, 0.15, 0.3])
+    validation_error_container = st.container()
 
     with col_title:
         st.markdown("### Temporal Data")
@@ -406,6 +440,39 @@ def temporal_data_table(
         delete_btn = st.button("❌", help=f"Delete {app_settings.example_name} time-step", disabled=n_timesteps == 0)
         if delete_btn:
             app_state.interaction_state = "deleting_temporal_data"
+
+    with col_left:
+        disabled = app_state.current_timestep == 0
+        st.button(
+            "◀",
+            help="Navigate to the previous time-step" if not disabled else None,
+            disabled=app_state.current_timestep == 0,
+            on_click=_navigate_to_prev_timestep,
+            kwargs=dict(app_state=app_state),
+        )
+    with col_select:
+        timestep_selector_key = "timestep_selector_key"
+        st.selectbox(
+            label="Select time step with time index:",
+            label_visibility="collapsed",
+            key=timestep_selector_key,
+            options=_get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal),
+            index=app_state.current_timestep,
+            on_change=_set_current_timestep,
+            kwargs=dict(app_state=app_state, data_sample=data_sample, timestep_selector_key=timestep_selector_key),
+        )
+    with col_right:
+        disabled = app_state.current_timestep == (n_timesteps - 1)
+        st.button(
+            "▶",
+            help="Navigate to the next time-step" if not disabled else None,
+            disabled=app_state.current_timestep == (n_timesteps - 1),
+            on_click=_navigate_to_next_timestep,
+            kwargs=dict(app_state=app_state, n_timesteps=n_timesteps),
+        )
+    with col_steps:
+        add_vertical_space.add_vertical_space(1)
+        st.markdown(f"`time-step: {app_state.current_timestep + 1}/{n_timesteps}`")
 
     if app_state.interaction_state == "adding_temporal_data":
         new_time_index = _generate_new_time_index(data_defs=data_defs, data_sample=data_sample)
@@ -444,41 +511,6 @@ def temporal_data_table(
             cancel_btn_help="Cancel deleting the time-step data",
             button_cols_split=[0.3, 0.3, 0.4],
         )
-
-    col_left, col_select, col_right, col_steps = st.columns([0.15, 0.4, 0.15, 0.3])
-    with col_left:
-        disabled = app_state.current_timestep == 0
-        st.button(
-            "◀",
-            help="Navigate to the previous time-step" if not disabled else None,
-            disabled=app_state.current_timestep == 0,
-            on_click=_navigate_to_prev_timestep,
-            kwargs=dict(app_state=app_state),
-        )
-    with col_select:
-        timestep_selector_key = "timestep_selector_key"
-        st.selectbox(
-            label="Select time step with time index:",
-            label_visibility="collapsed",
-            key=timestep_selector_key,
-            options=_get_time_indexes(data_sample=data_sample),
-            index=app_state.current_timestep,
-            on_change=_set_current_timestep,
-            kwargs=dict(app_state=app_state, data_sample=data_sample, timestep_selector_key=timestep_selector_key),
-        )
-    with col_right:
-        disabled = app_state.current_timestep == (n_timesteps - 1)
-        st.button(
-            "▶",
-            help="Navigate to the next time-step" if not disabled else None,
-            disabled=app_state.current_timestep == (n_timesteps - 1),
-            on_click=_navigate_to_next_timestep,
-            kwargs=dict(app_state=app_state, n_timesteps=n_timesteps),
-        )
-    with col_steps:
-        add_vertical_space.add_vertical_space(1)
-        st.markdown(f"`timestep: {app_state.current_timestep + 1}/{n_timesteps}`")
-
     if app_state.interaction_state != "editing_temporal_data":
         sample_df_dict = {"Record": [], "Value": []}  # type: ignore [var-annotated]
         for field_name, value in data_sample.temporal[app_state.current_timestep].items():
@@ -495,7 +527,13 @@ def temporal_data_table(
                 "Update",
                 type="primary",
                 on_click=_update_sample_temporal_data,
-                kwargs=dict(app_state=app_state, db=db, data_defs=data_defs, data_sample=data_sample),
+                kwargs=dict(
+                    app_state=app_state,
+                    db=db,
+                    data_defs=data_defs,
+                    data_sample=data_sample,
+                    validation_error_container=validation_error_container,
+                ),
             )
         if app_state.interaction_state == "editing_temporal_data":
             cancel_edit_btn = st.button("Cancel", help=f"Cancel editing {app_settings.example_name} temporal data")
