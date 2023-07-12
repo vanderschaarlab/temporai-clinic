@@ -1,4 +1,6 @@
 import os
+import random
+import string
 import time
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional
 
@@ -125,6 +127,12 @@ def _reset_interaction_state(app_state: AppState):
     app_state.interaction_state = "showing"
 
 
+def _generate_new_sample_key():
+    length = 12
+    characters = string.ascii_lowercase + string.digits
+    return "".join(random.choice(characters) for _ in range(length))  # nosec: B311
+
+
 def sample_selector(
     app_settings: AppSettings,
     app_state: AppState,
@@ -137,7 +145,7 @@ def sample_selector(
     # Special case: no samples in database - create one. ---
     no_data_found = len(sample_keys) == 0
     if no_data_found:
-        new_key = db_utils.generate_new_sample_key()
+        new_key = _generate_new_sample_key()
         with st.container():
             st.error(f"No data found, adding first {app_settings.example_name}, ID={new_key}...")
         _add_new_sample(app_state=app_state, db=db, key=new_key, field_defs=field_defs)
@@ -191,7 +199,7 @@ def sample_selector(
             cancel_btn_help=f"Cancel deleting {app_settings.example_name}",
         )
     if app_state.interaction_state == "adding_sample":
-        new_key = db_utils.generate_new_sample_key()
+        new_key = _generate_new_sample_key()
         faux_confirm_modal(
             panel_type="info",
             panel_text=(

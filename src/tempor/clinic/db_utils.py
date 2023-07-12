@@ -1,5 +1,3 @@
-import random
-import string
 from typing import Any, Dict, List, cast
 
 import streamlit as st
@@ -23,12 +21,6 @@ def get_all_sample_keys(db: DetaBase) -> List[str]:
     if all_data.last is not None:
         raise RuntimeError("Too many data rows. Supported max rows is 1000.")
     return [example["key"] for example in all_data.items]
-
-
-def generate_new_sample_key():
-    length = 12
-    characters = string.ascii_lowercase + string.digits
-    return "".join(random.choice(characters) for _ in range(length))  # nosec: B311
 
 
 def _sort_fields(sort_key: List[str], fields: Dict[str, Dict]) -> Dict[str, Dict]:
