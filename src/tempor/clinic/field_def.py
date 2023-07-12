@@ -7,8 +7,9 @@ from typing_extensions import Literal
 
 from tempor.clinic.const import DEFAULTS, STATE_KEYS, DataDefsCollectionDict, DataModality
 
-DataType = Literal["int", "float", "categorical", "binary", "time_index"]
+DataType = Literal["int", "float", "categorical", "binary", "time_index", "computed"]
 TimeIndexType = Literal["date", "int", "float"]
+ComputedType = Literal["float"]
 
 
 def get_widget_st_key(field_def: "FieldDef") -> str:
@@ -212,6 +213,28 @@ class FloatTimeIndexDef(FloatDef, TimeIndexDef):
 # TODO: Data time index.
 
 
+class ComputedDef(FieldDef):
+    computed_type: ClassVar[ComputedType]
+    data_type: ClassVar[DataType] = "computed"
+
+    computation: Callable[[Dict], Any]
+
+    def _render_widget(self, value: float) -> Any:
+        return st.markdown(f"{self.readable_name}:\n`Computed automatically`")
+
+    def compute(self, data: Dict) -> Any:
+        # NOTE: Currently the data passed in here is:
+        #   - the static data for static data computed fields.
+        #   - the temporal data *for the current timestep* for temporal data computed fields.
+        #   - event computed data case not handled.
+        return self.computation(data)
+
+
+class FloatComputedDef(ComputedDef, FloatDef):
+    computed_type: ClassVar[ComputedType]
+    data_type: ClassVar[DataType] = "computed"
+
+
 def _parse_field_defs_dict(field_defs: Dict[str, Dict], data_modality: DataModality) -> Dict[str, FieldDef]:
     parsed: Dict[str, FieldDef] = dict()
     for feature_name, field_def in field_defs.items():
@@ -234,6 +257,13 @@ def _parse_field_defs_dict(field_defs: Dict[str, Dict], data_modality: DataModal
                 )
             else:
                 raise TypeError(f"Unknown 'time_index_type' encountered: {field_def['time_index_type']}")
+        elif field_def["data_type"] == "computed":
+            if field_def["computed_type"] == "float":
+                parsed[feature_name] = FloatComputedDef(
+                    feature_name=feature_name, data_modality=data_modality, **field_def
+                )
+            else:
+                raise TypeError(f"Unknown 'computed_type' encountered: {field_def['computed_type']}")
         else:
             raise TypeError(f"Unknown 'data_type' encountered: {field_def['data_type']}")
     return parsed
@@ -269,8 +299,36 @@ def parse_field_defs(field_defs_raw: DataDefsCollectionDict) -> FieldDefsCollect
     )
 
 
-def get_default(field_defs: Dict[str, "FieldDef"]) -> Dict[str, Dict]:
+def get_default(field_defs: Dict[str, FieldDef]) -> Dict[str, Dict]:
     data_sample = dict()
+
+    # Get defaults for non-computed fields:
     for field_name, field_def in field_defs.items():
-        data_sample[field_name] = field_def.get_default_value()
+        if field_def.data_type != "computed":
+            data_sample[field_name] = field_def.get_default_value()
+    # Compute the computed fields:
+    for field_name, field_def in field_defs.items():
+        if field_def.data_type == "computed":
+            if not isinstance(field_def, ComputedDef):
+                raise RuntimeError
+            data_sample[field_name] = field_def.compute(data_sample)
+
+    return data_sample
+
+
+def update(field_defs: Dict[str, FieldDef], session_state: Any) -> Dict[str, Dict]:
+    data_sample = dict()
+
+    # Update non-computed fields:
+    for field_name, field_def in field_defs.items():
+        key = get_widget_st_key(field_def)
+        if field_def.data_type != "computed":
+            data_sample[field_name] = session_state[key]
+    # Update computed fields:
+    for field_name, field_def in field_defs.items():
+        if field_def.data_type == "computed":
+            if not isinstance(field_def, ComputedDef):
+                raise RuntimeError
+            data_sample[field_name] = field_def.compute(data_sample)
+
     return data_sample

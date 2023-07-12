@@ -226,10 +226,7 @@ def _update_sample_static_data(
     if current_sample is None:
         raise RuntimeError("`current_sample` was `None`")
 
-    static = dict()
-    for field_name, dd in field_defs.static.items():
-        key = field_def.get_widget_st_key(dd)
-        static[field_name] = st.session_state[key]
+    static = field_def.update(field_defs=field_defs.static, session_state=st.session_state)
 
     data_sample = DataSample(static=static, temporal=data_sample.temporal, event=data_sample.event)
 
@@ -261,10 +258,7 @@ def _update_sample_temporal_data(
     if current_timestep is None:
         raise RuntimeError("`current_timestep` was `None`")
 
-    temporal = dict()
-    for field_name, dd in field_defs.temporal.items():
-        key = field_def.get_widget_st_key(dd)
-        temporal[field_name] = st.session_state[key]
+    temporal = field_def.update(field_defs=field_defs.temporal, session_state=st.session_state)
 
     # --- --- ---
     # If user sets time index to a time index that is the same as the time index in another existing time-step,
