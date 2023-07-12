@@ -7,7 +7,7 @@ import streamlit as st
 from streamlit_extras import add_vertical_space
 from typing_extensions import Literal
 
-from . import data_def, db_utils
+from . import db_utils, field_def
 from .app_state import AppState
 from .const import DEFAULTS, DataSample
 
@@ -75,8 +75,8 @@ def _delete_current_example(app_state: AppState, db: "DetaBase"):
     app_state.current_sample = None
 
 
-def _add_new_sample(app_state: AppState, db: "DetaBase", key: str, data_defs: data_def.DataDefsCollection):
-    db_utils.add_empty_sample(db=db, key=key, data_defs=data_defs)
+def _add_new_sample(app_state: AppState, db: "DetaBase", key: str, field_defs: field_def.FieldDefsCollection):
+    db_utils.add_empty_sample(db=db, key=key, field_defs=field_defs)
     app_state.current_sample = key
 
 
@@ -129,7 +129,7 @@ def sample_selector(
     app_settings: AppSettings,
     app_state: AppState,
     db: "DetaBase",
-    data_defs: data_def.DataDefsCollection,
+    field_defs: field_def.FieldDefsCollection,
     sample_keys: List[str],  # TODO: Is this needed here like this? Rethink.
 ) -> DataSample:
     col_patient_select, col_add, col_delete, _ = st.columns([0.8, 0.2 / 3, 0.2 / 3, 0.2 / 3])
@@ -140,7 +140,7 @@ def sample_selector(
         new_key = db_utils.generate_new_sample_key()
         with st.container():
             st.error(f"No data found, adding first {app_settings.example_name}, ID={new_key}...")
-        _add_new_sample(app_state=app_state, db=db, key=new_key, data_defs=data_defs)
+        _add_new_sample(app_state=app_state, db=db, key=new_key, field_defs=field_defs)
         time.sleep(3)
         st.experimental_rerun()
     # Special case: [END] ---
@@ -158,7 +158,7 @@ def sample_selector(
         if app_state.current_sample is None:
             app_state.current_sample = sample_keys[0]
 
-        data_sample = db_utils.get_sample(key=app_state.current_sample, db=db, data_defs=data_defs)
+        data_sample = db_utils.get_sample(key=app_state.current_sample, db=db, field_defs=field_defs)
 
     with col_add:
         add_vertical_space.add_vertical_space(2)
@@ -201,7 +201,7 @@ def sample_selector(
             ),
             panel_icon="ℹ️",
             confirm_btn_on_click=_add_new_sample,
-            confirm_btn_on_click_kwargs=dict(app_state=app_state, db=db, key=new_key, data_defs=data_defs),
+            confirm_btn_on_click_kwargs=dict(app_state=app_state, db=db, key=new_key, field_defs=field_defs),
             confirm_btn_help=f"Confirm adding {app_settings.example_name}",
             cancel_btn_on_click=_reset_interaction_state,
             cancel_btn_on_click_kwargs=dict(app_state=app_state),
@@ -212,15 +212,15 @@ def sample_selector(
 
 
 def _update_sample_static_data(
-    app_state: AppState, db: "DetaBase", data_defs: data_def.DataDefsCollection, data_sample: DataSample
+    app_state: AppState, db: "DetaBase", field_defs: field_def.FieldDefsCollection, data_sample: DataSample
 ):
     current_sample = app_state.current_sample
     if current_sample is None:
         raise RuntimeError("`current_sample` was `None`")
 
     static = dict()
-    for field_name, dd in data_defs.static.items():
-        key = data_def.get_widget_st_key(dd)
+    for field_name, dd in field_defs.static.items():
+        key = field_def.get_widget_st_key(dd)
         static[field_name] = st.session_state[key]
 
     data_sample = DataSample(static=static, temporal=data_sample.temporal, event=data_sample.event)
@@ -242,7 +242,7 @@ def _show_validation_error(validation_error_container: Any, msg: str):
 def _update_sample_temporal_data(
     app_state: AppState,
     db: "DetaBase",
-    data_defs: data_def.DataDefsCollection,
+    field_defs: field_def.FieldDefsCollection,
     data_sample: DataSample,
     validation_error_container: Any,
 ):
@@ -254,8 +254,8 @@ def _update_sample_temporal_data(
         raise RuntimeError("`current_timestep` was `None`")
 
     temporal = dict()
-    for field_name, dd in data_defs.temporal.items():
-        key = data_def.get_widget_st_key(dd)
+    for field_name, dd in field_defs.temporal.items():
+        key = field_def.get_widget_st_key(dd)
         temporal[field_name] = st.session_state[key]
 
     # --- --- ---
@@ -293,7 +293,7 @@ def _update_sample_temporal_data(
 def _add_sample_temporal_data(
     app_state: AppState,
     db: "DetaBase",
-    data_defs: data_def.DataDefsCollection,
+    field_defs: field_def.FieldDefsCollection,
     data_sample: DataSample,
     new_time_index: Any,
 ):
@@ -301,7 +301,7 @@ def _add_sample_temporal_data(
     if current_sample is None:
         raise RuntimeError("`current_sample` was `None`")
 
-    new_timestep = data_def.get_default(data_defs.temporal)
+    new_timestep = field_def.get_default(field_defs.temporal)
     new_timestep["time_index"] = new_time_index
     data_sample.temporal += [new_timestep]
 
@@ -349,7 +349,7 @@ def static_data_table(
     app_settings: AppSettings,
     app_state: AppState,
     db: "DetaBase",
-    data_defs: data_def.DataDefsCollection,
+    field_defs: field_def.FieldDefsCollection,
     data_sample: DataSample,
 ) -> None:
     col_title, col_edit, _ = st.columns([0.3, 0.2 / 3, 1 - (0.3 + 0.2 / 3)])
@@ -364,20 +364,20 @@ def static_data_table(
     if app_state.interaction_state != "editing_static_data":
         sample_df_dict = {"Record": [], "Value": []}  # type: ignore [var-annotated]
         for field_name, value in data_sample.static.items():
-            sample_df_dict["Record"].append(data_defs.static[field_name].readable_name)
+            sample_df_dict["Record"].append(field_defs.static[field_name].readable_name)
             sample_df_dict["Value"].append(value)
         sample_df = pd.DataFrame(sample_df_dict).set_index("Record", drop=True)
         st.table(sample_df)
     else:
         with st.form(key=DEFAULTS.key_edit_form_static):
-            for field_name, dd in data_defs.static.items():
+            for field_name, dd in field_defs.static.items():
                 value = data_sample.static[field_name]
                 dd.render_edit_widget(value)
             st.form_submit_button(
                 "Update",
                 type="primary",
                 on_click=_update_sample_static_data,
-                kwargs=dict(app_state=app_state, db=db, data_defs=data_defs, data_sample=data_sample),
+                kwargs=dict(app_state=app_state, db=db, field_defs=field_defs, data_sample=data_sample),
             )
         if app_state.interaction_state == "editing_static_data":
             cancel_edit_btn = st.button("Cancel", help=f"Cancel editing {app_settings.example_name} static data")
@@ -395,11 +395,11 @@ def _set_current_timestep(app_state: AppState, data_sample: DataSample, timestep
     )
 
 
-def _generate_new_time_index(data_defs: data_def.DataDefsCollection, data_sample: DataSample) -> Any:
+def _generate_new_time_index(field_defs: field_def.FieldDefsCollection, data_sample: DataSample) -> Any:
     max_time_index = max(_get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal))
-    time_index_def = data_defs.temporal["time_index"]
-    if not isinstance(time_index_def, data_def.TimeIndexDef):
-        raise RuntimeError(f"Time index data def was not an instance of {data_def.TimeIndexDef.__name__}")
+    time_index_def = field_defs.temporal["time_index"]
+    if not isinstance(time_index_def, field_def.TimeIndexDef):
+        raise RuntimeError(f"Time index field def was not an instance of {field_def.TimeIndexDef.__name__}")
     return time_index_def.get_next(max_time_index)
 
 
@@ -417,7 +417,7 @@ def temporal_data_table(
     app_settings: AppSettings,
     app_state: AppState,
     db: "DetaBase",
-    data_defs: data_def.DataDefsCollection,
+    field_defs: field_def.FieldDefsCollection,
     data_sample: DataSample,
 ) -> None:
     n_timesteps = len(data_sample.temporal)
@@ -475,7 +475,7 @@ def temporal_data_table(
         st.markdown(f"`time-step: {app_state.current_timestep + 1}/{n_timesteps}`")
 
     if app_state.interaction_state == "adding_temporal_data":
-        new_time_index = _generate_new_time_index(data_defs=data_defs, data_sample=data_sample)
+        new_time_index = _generate_new_time_index(field_defs=field_defs, data_sample=data_sample)
         faux_confirm_modal(
             panel_type="info",
             panel_text=(
@@ -486,7 +486,11 @@ def temporal_data_table(
             panel_icon="ℹ️",
             confirm_btn_on_click=_add_sample_temporal_data,
             confirm_btn_on_click_kwargs=dict(
-                app_state=app_state, db=db, data_defs=data_defs, data_sample=data_sample, new_time_index=new_time_index
+                app_state=app_state,
+                db=db,
+                field_defs=field_defs,
+                data_sample=data_sample,
+                new_time_index=new_time_index,
             ),
             confirm_btn_help="Confirm adding new time-step",
             cancel_btn_on_click=_reset_interaction_state,
@@ -514,13 +518,13 @@ def temporal_data_table(
     if app_state.interaction_state != "editing_temporal_data":
         sample_df_dict = {"Record": [], "Value": []}  # type: ignore [var-annotated]
         for field_name, value in data_sample.temporal[app_state.current_timestep].items():
-            sample_df_dict["Record"].append(data_defs.temporal[field_name].readable_name)
+            sample_df_dict["Record"].append(field_defs.temporal[field_name].readable_name)
             sample_df_dict["Value"].append(value)
         sample_df = pd.DataFrame(sample_df_dict).set_index("Record", drop=True)
         st.table(sample_df)
     else:
         with st.form(key=DEFAULTS.key_edit_form_temporal):
-            for field_name, dd in data_defs.temporal.items():
+            for field_name, dd in field_defs.temporal.items():
                 value = data_sample.temporal[app_state.current_timestep][field_name]
                 dd.render_edit_widget(value)
             st.form_submit_button(
@@ -530,7 +534,7 @@ def temporal_data_table(
                 kwargs=dict(
                     app_state=app_state,
                     db=db,
-                    data_defs=data_defs,
+                    field_defs=field_defs,
                     data_sample=data_sample,
                     validation_error_container=validation_error_container,
                 ),

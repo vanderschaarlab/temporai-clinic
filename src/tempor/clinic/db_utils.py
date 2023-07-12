@@ -6,7 +6,7 @@ import streamlit as st
 from deta import Deta
 from deta import _Base as DetaBase
 
-from . import data_def
+from . import field_def
 from .const import DataDefsCollectionDict, DataSample
 
 
@@ -32,7 +32,7 @@ def generate_new_sample_key():
 
 
 def _sort_fields(sort_key: List[str], fields: Dict[str, Dict]) -> Dict[str, Dict]:
-    # Sort the fields in data_defs order (the fields in the DB are in random order).
+    # Sort the fields in field_defs order (the fields in the DB are in random order).
     sorted_fields: Dict[str, Any] = dict()
     for key in sort_key:
         sorted_fields[key] = fields[key]
@@ -46,22 +46,22 @@ def _sort_fields_in_array(sort_key: List[str], array_of_fields: List[Dict[str, D
     return sorted_array_of_fields
 
 
-def get_sample(key: str, db: DetaBase, data_defs: "data_def.DataDefsCollection") -> DataSample:
+def get_sample(key: str, db: DetaBase, field_defs: "field_def.FieldDefsCollection") -> DataSample:
     raw_data = cast(DataDefsCollectionDict, db.get(key))
 
-    static = _sort_fields(sort_key=list(data_defs.static.keys()), fields=raw_data["static"])
+    static = _sort_fields(sort_key=list(field_defs.static.keys()), fields=raw_data["static"])
     temporal: Any = _sort_fields_in_array(
-        sort_key=list(data_defs.temporal.keys()), array_of_fields=raw_data["temporal"]
+        sort_key=list(field_defs.temporal.keys()), array_of_fields=raw_data["temporal"]
     )
-    event: Any = _sort_fields_in_array(sort_key=list(data_defs.event.keys()), array_of_fields=raw_data["event"])
+    event: Any = _sort_fields_in_array(sort_key=list(field_defs.event.keys()), array_of_fields=raw_data["event"])
 
     return DataSample(static=static, temporal=temporal, event=event)
 
 
-def add_empty_sample(db: DetaBase, key: str, data_defs: "data_def.DataDefsCollection"):
-    static = data_def.get_default(data_defs=data_defs.static) if data_defs.static else {}
-    temporal: Any = [data_def.get_default(data_defs=data_defs.temporal)] if data_defs.temporal else []
-    event: Any = [data_def.get_default(data_defs=data_defs.event)] if data_defs.event else []
+def add_empty_sample(db: DetaBase, key: str, field_defs: "field_def.FieldDefsCollection"):
+    static = field_def.get_default(field_defs=field_defs.static) if field_defs.static else {}
+    temporal: Any = [field_def.get_default(field_defs=field_defs.temporal)] if field_defs.temporal else []
+    event: Any = [field_def.get_default(field_defs=field_defs.event)] if field_defs.event else []
 
     data_sample = dict(DataSample(static=static, temporal=temporal, event=event))
 

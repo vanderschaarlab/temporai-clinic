@@ -11,14 +11,14 @@ DataType = Literal["int", "float", "categorical", "binary", "time_index"]
 TimeIndexType = Literal["date", "int", "float"]
 
 
-def get_widget_st_key(data_def: "DataDef") -> str:
+def get_widget_st_key(field_def: "FieldDef") -> str:
     data_or_time_index = (
-        STATE_KEYS.time_index_prefix if data_def.data_type == "time_index" else STATE_KEYS.data_field_prefix
+        STATE_KEYS.time_index_prefix if field_def.data_type == "time_index" else STATE_KEYS.data_field_prefix
     )
-    return f"{data_or_time_index}_{data_def.data_modality}_{data_def.feature_name}"
+    return f"{data_or_time_index}_{field_def.data_modality}_{field_def.feature_name}"
 
 
-class DataDef(BaseModel, abc.ABC):
+class FieldDef(BaseModel, abc.ABC):
     data_type: ClassVar[DataType]
 
     data_modality: DataModality
@@ -58,13 +58,13 @@ class DataDef(BaseModel, abc.ABC):
         return self._default_transform_input_to_db(value)
 
 
-class DataDefsCollection(NamedTuple):
-    static: Dict[str, DataDef]
-    temporal: Dict[str, DataDef]
-    event: Dict[str, DataDef]
+class FieldDefsCollection(NamedTuple):
+    static: Dict[str, FieldDef]
+    temporal: Dict[str, FieldDef]
+    event: Dict[str, FieldDef]
 
 
-class IntDef(DataDef):
+class IntDef(FieldDef):
     data_type: ClassVar[DataType] = "int"
 
     min_value: Optional[int] = None
@@ -91,7 +91,7 @@ class IntDef(DataDef):
         return int(value)
 
 
-class FloatDef(DataDef):
+class FloatDef(FieldDef):
     data_type: ClassVar[DataType] = "float"
 
     min_value: Optional[float] = None
@@ -118,7 +118,7 @@ class FloatDef(DataDef):
         return float(value)
 
 
-class CategoricalDef(DataDef):
+class CategoricalDef(FieldDef):
     data_type: ClassVar[DataType] = "categorical"
 
     options: List[str]
@@ -141,7 +141,7 @@ class CategoricalDef(DataDef):
         return str(value)
 
 
-class BinaryDef(DataDef):
+class BinaryDef(FieldDef):
     data_type: ClassVar[DataType] = "binary"
 
     def _render_widget(self, value: bool) -> Any:
@@ -161,7 +161,7 @@ class BinaryDef(DataDef):
         return bool(value)
 
 
-class TimeIndexDef(DataDef):
+class TimeIndexDef(FieldDef):
     time_index_type: ClassVar[TimeIndexType]
     data_type: ClassVar[DataType] = "time_index"
 
@@ -176,122 +176,76 @@ class IntTimeIndexDef(IntDef, TimeIndexDef):
     def get_next(self, value: int) -> int:
         return value + 1
 
-    # min_value: Optional[int] = None
-    # max_value: Optional[int] = None
-    # step: Optional[int] = None
-
-    # def _render_widget(self, value: int) -> Any:
-    #     return st.number_input(
-    #         label=self.readable_name,
-    #         key=get_widget_st_key(self),
-    #         min_value=self.min_value,
-    #         max_value=self.max_value,
-    #         step=self.step,
-    #         value=value,
-    #     )
-
-    # def get_default_value(self) -> int:
-    #     return self.min_value if self.min_value is not None else 0
-
-    # def _default_transform_db_to_input(self, value: Any) -> int:
-    #     return int(value)
-
-    # def _default_transform_input_to_db(self, value: Any) -> int:
-    #     return int(value)
-
 
 class FloatTimeIndexDef(FloatDef, TimeIndexDef):
     time_index_type: ClassVar[TimeIndexType] = "float"
 
     def get_next(self, value: float) -> float:
-        return value + 1
-
-    # min_value: Optional[float] = None
-    # max_value: Optional[float] = None
-    # step: Optional[float] = None
-
-    # def _render_widget(self, value: float) -> Any:
-    #     return st.number_input(
-    #         label=self.readable_name,
-    #         key=get_widget_st_key(self),
-    #         min_value=self.min_value,
-    #         max_value=self.max_value,
-    #         step=self.step,
-    #         value=value,
-    #     )
-
-    # def get_default_value(self) -> float:
-    #     return self.min_value if self.min_value is not None else 0.0
-
-    # def _default_transform_db_to_input(self, value: Any) -> float:
-    #     return float(value)
-
-    # def _default_transform_input_to_db(self, value: Any) -> float:
-    #     return float(value)
+        return value + 1.0
 
 
 # TODO: Data time index.
 
 
-def _parse_data_defs_dict(data_defs: Dict[str, Dict], data_modality: DataModality) -> Dict[str, DataDef]:
-    parsed: Dict[str, DataDef] = dict()
-    for feature_name, data_def in data_defs.items():
-        if data_def["data_type"] == "int":
-            parsed[feature_name] = IntDef(feature_name=feature_name, data_modality=data_modality, **data_def)
-        elif data_def["data_type"] == "float":
-            parsed[feature_name] = FloatDef(feature_name=feature_name, data_modality=data_modality, **data_def)
-        elif data_def["data_type"] == "categorical":
-            parsed[feature_name] = CategoricalDef(feature_name=feature_name, data_modality=data_modality, **data_def)
-        elif data_def["data_type"] == "binary":
-            parsed[feature_name] = BinaryDef(feature_name=feature_name, data_modality=data_modality, **data_def)
-        elif data_def["data_type"] == "time_index":
-            if data_def["time_index_type"] == "int":
+def _parse_field_defs_dict(field_defs: Dict[str, Dict], data_modality: DataModality) -> Dict[str, FieldDef]:
+    parsed: Dict[str, FieldDef] = dict()
+    for feature_name, field_def in field_defs.items():
+        if field_def["data_type"] == "int":
+            parsed[feature_name] = IntDef(feature_name=feature_name, data_modality=data_modality, **field_def)
+        elif field_def["data_type"] == "float":
+            parsed[feature_name] = FloatDef(feature_name=feature_name, data_modality=data_modality, **field_def)
+        elif field_def["data_type"] == "categorical":
+            parsed[feature_name] = CategoricalDef(feature_name=feature_name, data_modality=data_modality, **field_def)
+        elif field_def["data_type"] == "binary":
+            parsed[feature_name] = BinaryDef(feature_name=feature_name, data_modality=data_modality, **field_def)
+        elif field_def["data_type"] == "time_index":
+            if field_def["time_index_type"] == "int":
                 parsed[feature_name] = IntTimeIndexDef(
-                    feature_name=feature_name, data_modality=data_modality, **data_def
+                    feature_name=feature_name, data_modality=data_modality, **field_def
                 )
-            elif data_def["time_index_type"] == "float":
+            elif field_def["time_index_type"] == "float":
                 parsed[feature_name] = FloatTimeIndexDef(
-                    feature_name=feature_name, data_modality=data_modality, **data_def
+                    feature_name=feature_name, data_modality=data_modality, **field_def
                 )
             else:
-                raise TypeError(f"Unknown 'time_index_type' encountered: {data_def['time_index_type']}")
+                raise TypeError(f"Unknown 'time_index_type' encountered: {field_def['time_index_type']}")
         else:
-            raise TypeError(f"Unknown 'data_type' encountered: {data_def['data_type']}")
+            raise TypeError(f"Unknown 'data_type' encountered: {field_def['data_type']}")
     return parsed
 
 
-def parse_data_defs(data_defs_raw: DataDefsCollectionDict) -> DataDefsCollection:
-    if "temporal" in data_defs_raw:
-        if "time_index" not in data_defs_raw["temporal"]:
-            raise ValueError("'time_index' key must be present in data defs -> temporal")
+def parse_field_defs(field_defs_raw: DataDefsCollectionDict) -> FieldDefsCollection:
+    if "temporal" in field_defs_raw:
+        if "time_index" not in field_defs_raw["temporal"]:
+            raise ValueError("'time_index' key must be present in field defs -> temporal")
         if (
-            "time_index" in data_defs_raw["temporal"]
-            and data_defs_raw["temporal"]["time_index"]["data_type"] != "time_index"
+            "time_index" in field_defs_raw["temporal"]
+            and field_defs_raw["temporal"]["time_index"]["data_type"] != "time_index"
         ):
-            raise ValueError("'time_index' data def must have 'data_type' == 'time_index'")
+            raise ValueError("'time_index' field def must have 'data_type' == 'time_index'")
         # TODO: time index must be first in the dict.
         # TODO: time_index_type must be present.
-    return DataDefsCollection(
+    return FieldDefsCollection(
         static=(
-            _parse_data_defs_dict(data_defs=data_defs_raw["static"], data_modality="static")
-            if "static" in data_defs_raw
+            _parse_field_defs_dict(field_defs=field_defs_raw["static"], data_modality="static")
+            if "static" in field_defs_raw
             else dict()
         ),
         temporal=(
-            _parse_data_defs_dict(data_defs=data_defs_raw["temporal"], data_modality="temporal")
-            if "temporal" in data_defs_raw
+            _parse_field_defs_dict(field_defs=field_defs_raw["temporal"], data_modality="temporal")
+            if "temporal" in field_defs_raw
             else dict()
         ),
         event=(
-            _parse_data_defs_dict(data_defs=data_defs_raw["event"], data_modality="event")
-            if "event" in data_defs_raw
+            _parse_field_defs_dict(field_defs=field_defs_raw["event"], data_modality="event")
+            if "event" in field_defs_raw
             else dict()
         ),
     )
 
 
-def get_default(data_defs: Dict[str, "DataDef"]) -> Dict[str, Dict]:
+def get_default(field_defs: Dict[str, "FieldDef"]) -> Dict[str, Dict]:
     data_sample = dict()
-    for field_name, data_def in data_defs.items():
-        data_sample[field_name] = data_def.get_default_value()
+    for field_name, field_def in field_defs.items():
+        data_sample[field_name] = field_def.get_default_value()
     return data_sample
