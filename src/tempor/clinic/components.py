@@ -2,9 +2,10 @@ import os
 import random
 import string
 import time
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional, cast
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 from streamlit_extras import add_vertical_space
 from typing_extensions import Literal
@@ -556,3 +557,31 @@ def temporal_data_table(
             cancel_edit_btn = st.button("Cancel", help=f"Cancel editing {app_settings.example_name} temporal data")
             if cancel_edit_btn:
                 app_state.interaction_state = "showing"
+
+
+def temporal_data_chart(data_sample: DataSample, field_defs: field_def.FieldDefsCollection):
+    feature_keys = list(field_defs.temporal.keys())
+    feature_readable_names = [fd.readable_name for _, fd in field_defs.temporal.items()]
+    selectbox_feature_keys = [feature_key for feature_key in feature_keys if feature_key != DEFAULTS.time_index_field]
+    selectbox_feature_readable_names = [
+        fd.readable_name for feature_key, fd in field_defs.temporal.items() if feature_key != DEFAULTS.time_index_field
+    ]
+
+    selected_feature_readable_name = st.selectbox(label="Time series", options=selectbox_feature_readable_names)
+    selected_feature_readable_name = cast(str, selected_feature_readable_name)
+    selected_feature_index = selectbox_feature_readable_names.index(selected_feature_readable_name)
+    selected_feature_key = selectbox_feature_keys[selected_feature_index]
+
+    df_dict = dict()
+    for feature_key in feature_keys:
+        df_dict[feature_key] = [x[feature_key] for x in data_sample.temporal]
+    df = pd.DataFrame(df_dict).set_index(DEFAULTS.time_index_field, drop=True)
+    # For debugging, preview temporal data as a table:
+    # st.write(df)
+
+    fig = px.line(
+        df,
+        y=selected_feature_key,
+        labels={k: v for k, v in zip(feature_keys, feature_readable_names)},
+    )
+    st.plotly_chart(fig)
