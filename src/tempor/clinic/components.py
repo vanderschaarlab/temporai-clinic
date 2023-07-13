@@ -278,7 +278,6 @@ def _update_sample_temporal_data(
     # In case the newly added time-step is not in the same position in the array of timesteps, re-sort the timesteps.
     new_time_index = temporal[DEFAULTS.time_index_field]
     time_indexes = _get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal)
-    print(time_indexes)
     time_indexes = sorted(time_indexes)
     temp_dict = {x[DEFAULTS.time_index_field]: x for x in data_sample.temporal}
     reordered = [temp_dict[ti] for ti in time_indexes]
