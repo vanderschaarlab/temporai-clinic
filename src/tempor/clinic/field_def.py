@@ -366,14 +366,14 @@ def update(field_defs: Dict[str, FieldDef], session_state: Any) -> Dict[str, Dic
     return data_sample
 
 
-def process_db_to_input(field_defs: Dict[str, FieldDef], data: Dict[str, Dict]) -> Dict[str, Dict]:
+def process_db_to_input(field_defs: Dict[str, FieldDef], data: Dict) -> Dict:
     data_processed = dict()
     for field_name, field_def in field_defs.items():
         data_processed[field_name] = field_def.process_db_to_input(data[field_name])
     return data_processed
 
 
-def process_input_to_db(field_defs: Dict[str, FieldDef], data: Dict[str, Dict]) -> Dict[str, Dict]:
+def process_input_to_db(field_defs: Dict[str, FieldDef], data: Dict) -> Dict:
     data_processed = dict()
     for field_name, field_def in field_defs.items():
         data_processed[field_name] = field_def.process_input_to_db(data[field_name])
