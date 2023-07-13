@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optiona
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from streamlit_extras import add_vertical_space
 from typing_extensions import Literal
 
 from . import db_utils, field_def
@@ -21,6 +20,12 @@ if TYPE_CHECKING:
 class AppSettings(NamedTuple):
     name: str
     example_name: str
+
+
+def add_vertical_space(num_lines: int = 1):
+    """Add vertical space to your Streamlit app."""
+    for _ in range(num_lines):
+        st.write("")
 
 
 def page_config(app_settings: AppSettings, icon_path: Optional[str] = None) -> None:
@@ -170,10 +175,10 @@ def sample_selector(
         data_sample = db_utils.get_sample(key=app_state.current_sample, db=db, field_defs=field_defs)
 
     with col_add:
-        add_vertical_space.add_vertical_space(2)
+        add_vertical_space(2)
         add_btn = st.button("➕", help=f"Add {app_settings.example_name}")
     with col_delete:
-        add_vertical_space.add_vertical_space(2)
+        add_vertical_space(2)
         delete_btn = st.button("❌", help=f"Delete {app_settings.example_name}")
 
     if add_btn:
@@ -484,7 +489,7 @@ def temporal_data_table(
             kwargs=dict(app_state=app_state, n_timesteps=n_timesteps),
         )
     with col_steps:
-        add_vertical_space.add_vertical_space(1)
+        add_vertical_space(1)
         st.markdown(f"`time-step: {app_state.current_timestep + 1}/{n_timesteps}`")
 
     if app_state.interaction_state == "adding_temporal_data":
