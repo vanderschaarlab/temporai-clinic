@@ -226,6 +226,7 @@ class DateTimeIndexDef(TimeIndexDef):
             key=get_widget_st_key(self),
             max_value=self.max_value,
             min_value=self.min_value,
+            value=value,
         )
 
     def get_default_value(self) -> datetime.date:
