@@ -539,8 +539,6 @@ def temporal_data_table(
         with st.form(key=DEFAULTS.key_edit_form_temporal):
             for field_name, dd in field_defs.temporal.items():
                 value = data_sample.temporal[app_state.current_timestep][field_name]
-                print(value)
-                print(type(value))
                 dd.render_edit_widget(value)
             st.form_submit_button(
                 "Update",
