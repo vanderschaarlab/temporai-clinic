@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, List, NamedTuple
 
 from pydantic import BaseModel
@@ -30,11 +31,14 @@ class SessionStateKeys(NamedTuple):
     time_index_prefix: str = "time_index"
 
 
+ASSETS_PATH = os.path.realpath(os.path.join(os.path.dirname(__file__), "assets"))
+
+
 class Defaults(NamedTuple):
     data_dir: str = "./data/"
     assets_dir: str = "./assets/"
-    logo: str = "TemporAI_Clinic_Logo.png"
-    icon: str = "TemporAI_Clinic_Logo_Icon.ico"
+    logo: str = os.path.join(ASSETS_PATH, "TemporAI_Clinic_Logo.png")
+    icon: str = os.path.join(ASSETS_PATH, "TemporAI_Clinic_Logo_Icon.ico")
     # Special fields:
     time_index_field: str = "time_index"
     # Streamlit component keys:
