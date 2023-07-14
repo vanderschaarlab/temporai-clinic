@@ -31,7 +31,7 @@ class SessionStateKeys(NamedTuple):
     time_index_prefix: str = "time_index"
 
 
-ASSETS_PATH = os.path.realpath(os.path.dirname(__file__))
+ASSETS_PATH = os.path.realpath(os.path.join(os.path.dirname(__file__), "assets"))
 
 
 class Defaults(NamedTuple):
