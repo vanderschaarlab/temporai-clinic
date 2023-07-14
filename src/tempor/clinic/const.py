@@ -25,6 +25,7 @@ class SessionStateKeys(NamedTuple):
     current_sample: str = "current_sample"
     current_timestep: str = "current_timestep"
     interaction_state: str = "interaction_state"
+    # Field prefixes:
     data_field_prefix: str = "data"
     time_index_prefix: str = "time_index"
 

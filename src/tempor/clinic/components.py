@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optiona
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from typing_extensions import Literal
+from typing_extensions import Literal, Protocol
 
-from . import db_utils, field_def
+from . import db_utils, field_def, utils
 from .app_state import AppState
 from .const import DEFAULTS, DataSample
 
@@ -241,10 +241,6 @@ def _update_sample_static_data(
     app_state.interaction_state = "showing"
 
 
-def _remove_ith_element(lst: List, i: int):
-    return lst[:i] + lst[i + 1 :]
-
-
 def _show_validation_error(validation_error_container: Any, msg: str):
     with validation_error_container:
         st.error(msg, icon="⛔")
@@ -269,8 +265,8 @@ def _update_sample_temporal_data(
     # --- --- ---
     # If user sets time index to a time index that is the same as the time index in another existing time-step,
     # raise a validation "error".
-    time_indexes = _get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal)
-    existing_time_indexes = _remove_ith_element(time_indexes, current_timestep)
+    time_indexes = utils.get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal)
+    existing_time_indexes = utils.remove_ith_element(time_indexes, current_timestep)
     if temporal[DEFAULTS.time_index_field] in existing_time_indexes:
         validation_error_msg = f"Time index {temporal['time_index']} already exists, choose a different time index"
         _show_validation_error(validation_error_container, msg=validation_error_msg)
@@ -282,7 +278,7 @@ def _update_sample_temporal_data(
     # --- --- ---
     # In case the newly added time-step is not in the same position in the array of timesteps, re-sort the timesteps.
     new_time_index = temporal[DEFAULTS.time_index_field]
-    time_indexes = _get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal)
+    time_indexes = utils.get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal)
     time_indexes = sorted(time_indexes)
     temp_dict = {x[DEFAULTS.time_index_field]: x for x in data_sample.temporal}
     reordered = [temp_dict[ti] for ti in time_indexes]
@@ -354,15 +350,11 @@ def _delete_sample_temporal_data(
     app_state.interaction_state = "showing"
 
 
-def _format_with_field_formatting(value: Any, fd: field_def.FieldDef) -> str:
-    return ("{0" + fd.get_formatting() + "}").format(value)
-
-
 def _prepare_data_table(data: Dict[str, Any], field_defs: Dict[str, field_def.FieldDef]) -> pd.DataFrame:
     sample_df_dict = {"Record": [], "Value": []}  # type: ignore [var-annotated]
     for field_name, value in data.items():
         sample_df_dict["Record"].append(field_defs[field_name].readable_name)
-        sample_df_dict["Value"].append(_format_with_field_formatting(value, field_defs[field_name]))
+        sample_df_dict["Value"].append(utils.format_with_field_formatting(value, field_defs[field_name]))
     return pd.DataFrame(sample_df_dict).set_index("Record", drop=True)
 
 
@@ -402,18 +394,14 @@ def static_data_table(
                 app_state.interaction_state = "showing"
 
 
-def _get_temporal_data_time_indexes(data_sample_temporal: List[Dict[str, Any]]) -> List:
-    return [x[DEFAULTS.time_index_field] for x in data_sample_temporal]
-
-
 def _set_current_timestep(app_state: AppState, data_sample: DataSample, timestep_selector_key: str):
-    app_state.current_timestep = _get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal).index(
+    app_state.current_timestep = utils.get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal).index(
         st.session_state[timestep_selector_key]
     )
 
 
 def _generate_new_time_index(field_defs: field_def.FieldDefsCollection, data_sample: DataSample) -> Any:
-    max_time_index = max(_get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal))
+    max_time_index = max(utils.get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal))
     time_index_def = field_defs.temporal[DEFAULTS.time_index_field]
     if not isinstance(time_index_def, field_def.TimeIndexDef):
         raise RuntimeError(f"Time index field def was not an instance of {field_def.TimeIndexDef.__name__}")
@@ -473,11 +461,11 @@ def temporal_data_table(
             label="Select time step with time index:",
             label_visibility="collapsed",
             key=timestep_selector_key,
-            options=_get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal),
+            options=utils.get_temporal_data_time_indexes(data_sample_temporal=data_sample.temporal),
             index=app_state.current_timestep,
             on_change=_set_current_timestep,
             kwargs=dict(app_state=app_state, data_sample=data_sample, timestep_selector_key=timestep_selector_key),
-            format_func=lambda x: _format_with_field_formatting(x, field_defs.temporal[DEFAULTS.time_index_field]),
+            format_func=lambda x: utils.format_with_field_formatting(x, field_defs.temporal[DEFAULTS.time_index_field]),
         )
     with col_right:
         disabled = app_state.current_timestep == (n_timesteps - 1)
@@ -576,10 +564,7 @@ def temporal_data_chart(data_sample: DataSample, field_defs: field_def.FieldDefs
     selected_feature_index = selectbox_feature_readable_names.index(selected_feature_readable_name)
     selected_feature_key = selectbox_feature_keys[selected_feature_index]
 
-    df_dict = dict()
-    for feature_key in feature_keys:
-        df_dict[feature_key] = [x[feature_key] for x in data_sample.temporal]
-    df = pd.DataFrame(df_dict).set_index(DEFAULTS.time_index_field, drop=True)
+    df = utils.get_temporal_data_as_df(data_sample.temporal)
     # For debugging, preview temporal data as a table:
     # st.write(df)
 
@@ -589,3 +574,64 @@ def temporal_data_chart(data_sample: DataSample, field_defs: field_def.FieldDefs
         labels={k: v for k, v in zip(feature_keys, feature_readable_names)},
     )
     st.plotly_chart(fig)
+
+
+class RiskPredictionCallback(Protocol):
+    def __call__(
+        self,
+        data_sample: DataSample,
+        time_max: Any,
+        time_resolution: Any,
+        **kwargs,
+    ) -> pd.DataFrame:
+        ...
+
+
+def risk_estimation_time_max_slider(min_value: Any, max_value: Any, step: Any, initial_value: Any) -> None:
+    return st.slider(
+        label="Prediction time limit",
+        min_value=min_value,
+        max_value=max_value,
+        value=initial_value,
+        step=step,
+    )
+
+
+def risk_prediction_chart(
+    data_sample: DataSample,
+    x_axis_title: str,
+    y_axis_title: str,
+    time_max: Any,
+    time_resolution: Any,
+    risk_prediction_callback: RiskPredictionCallback,
+    **kwargs,
+):
+    risk_predictions = risk_prediction_callback(
+        data_sample,
+        time_max=time_max,
+        time_resolution=time_resolution,
+        **kwargs,
+    )
+    fig = px.area(
+        risk_predictions,
+        y="risk_prediction",
+        color_discrete_sequence=["red"],
+        range_y=(0.0, 1.0 + 0.1),  # `+ 0.1` to make sure the grid-line at y=1 gets displayed.
+    )
+    fig.update_traces(hovertemplate="<b>" + y_axis_title + "</b>: %{y:.3f}<br><b>" + x_axis_title + "</b>: %{x}<br>")
+    fig.update_xaxes(title=x_axis_title)
+    fig.update_yaxes(title=y_axis_title)
+    st.plotly_chart(fig, use_container_width=True)
+    # For debug, show data:
+    # st.write(risk_predictions)
+
+
+def debug_info(
+    data_sample: DataSample,
+) -> None:
+    st.markdown("### Session state:")
+    st.write(st.session_state)
+    st.markdown("### Sample data:")
+    st.write(data_sample)
+    # st.markdown("### Database:")
+    # st.write(all_data.items)
