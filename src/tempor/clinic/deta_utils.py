@@ -1,16 +1,46 @@
-from typing import Any, Dict, List, cast
+import io
+import os
+import zipfile
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import streamlit as st
 from deta import Deta
 from deta import _Base as DetaBase
+from deta import _Drive as DetaDrive
 
 from . import field_def
 from .const import DataDefsCollectionDict, DataSample
 
 
-def connect_to_db(secret_env_var_name: str, db_name: str) -> DetaBase:
+def connect_to_db(
+    secret_env_var_name: str, db_name: str, drive_name: Optional[str] = None
+) -> Tuple[Deta, DetaBase, Optional[DetaDrive]]:
     deta = Deta(st.secrets[secret_env_var_name])
-    return deta.Base(db_name)
+    base = deta.Base(db_name)
+    drive: Optional[DetaDrive] = None
+    if drive_name:
+        drive = deta.Drive(drive_name)
+    return deta, base, drive
+
+
+def download_zipped_dir(drive: DetaDrive, zip_file: str = "data.zip", local_dir: str = "./data") -> None:
+    # NOTE: Will only download and extract if the local directory does not exist.
+    directory = os.path.realpath(local_dir)
+    if not os.path.exists(directory):
+        print(f"Local directory {local_dir} does not exist, creating")
+        os.makedirs(directory)
+        # Get zip file from Deta Drive.
+        print(f"Downloading {zip_file} from Deta Drive")
+        # For debug:
+        # print(drive.list())
+        file = drive.get(zip_file)
+        if file is None:
+            raise RuntimeError(f"File {zip_file} not found on Deta Drive")
+        print(f"Unzipping {zip_file} to {local_dir}")
+        bytes_ = file.read()
+        with zipfile.ZipFile(io.BytesIO(bytes_), "r") as zip_ref:
+            zip_ref.extractall(directory)
+        print("Downloading and extracting zip file finished")
 
 
 def get_all_sample_keys(db: DetaBase) -> List[str]:

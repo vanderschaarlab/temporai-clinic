@@ -11,7 +11,7 @@ import streamlit_extras
 from packaging.version import Version
 from typing_extensions import Literal, Protocol
 
-from . import db_utils, field_def, utils
+from . import deta_utils, field_def, utils
 from .app_state import AppState
 from .const import DEFAULTS, DataSample
 
@@ -89,12 +89,12 @@ def _delete_current_example(app_state: AppState, db: "DetaBase"):
     current_sample = app_state.current_sample
     if current_sample is None:
         raise RuntimeError("`current_sample` was `None`")
-    db_utils.delete_sample(db=db, key=current_sample)
+    deta_utils.delete_sample(db=db, key=current_sample)
     app_state.current_sample = None
 
 
 def _add_new_sample(app_state: AppState, db: "DetaBase", key: str, field_defs: field_def.FieldDefsCollection):
-    db_utils.add_empty_sample(db=db, key=key, field_defs=field_defs)
+    deta_utils.add_empty_sample(db=db, key=key, field_defs=field_defs)
     app_state.current_sample = key
 
 
@@ -182,7 +182,7 @@ def sample_selector(
         if app_state.current_sample is None:
             app_state.current_sample = sample_keys[0]
 
-        data_sample = db_utils.get_sample(key=app_state.current_sample, db=db, field_defs=field_defs)
+        data_sample = deta_utils.get_sample(key=app_state.current_sample, db=db, field_defs=field_defs)
 
     with col_add:
         add_vertical_space(2)
@@ -246,7 +246,7 @@ def _update_sample_static_data(
 
     data_sample = DataSample(static=static, temporal=data_sample.temporal, event=data_sample.event)
 
-    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample, field_defs=field_defs)
+    deta_utils.update_sample(db=db, key=current_sample, data_sample=data_sample, field_defs=field_defs)
 
     app_state.interaction_state = "showing"
 
@@ -298,7 +298,7 @@ def _update_sample_temporal_data(
 
     data_sample = DataSample(static=data_sample.static, temporal=data_sample.temporal, event=data_sample.event)
 
-    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample, field_defs=field_defs)
+    deta_utils.update_sample(db=db, key=current_sample, data_sample=data_sample, field_defs=field_defs)
 
     app_state.current_timestep = current_timestep
     app_state.interaction_state = "showing"
@@ -321,7 +321,7 @@ def _add_sample_temporal_data(
 
     data_sample = DataSample(static=data_sample.static, temporal=data_sample.temporal, event=data_sample.event)
 
-    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample, field_defs=field_defs)
+    deta_utils.update_sample(db=db, key=current_sample, data_sample=data_sample, field_defs=field_defs)
 
     new_timestep_idx = len(data_sample.temporal) - 1  # Last timestep is the newly-added timestep.
     app_state.current_timestep = new_timestep_idx
@@ -351,7 +351,7 @@ def _delete_sample_temporal_data(
 
     data_sample = DataSample(static=data_sample.static, temporal=data_sample.temporal, event=data_sample.event)
 
-    db_utils.update_sample(db=db, key=current_sample, data_sample=data_sample, field_defs=field_defs)
+    deta_utils.update_sample(db=db, key=current_sample, data_sample=data_sample, field_defs=field_defs)
 
     # Fall to the next or last time step after deletion:
     new_timestep_idx = min(current_timestep, len(data_sample.temporal) - 1)
