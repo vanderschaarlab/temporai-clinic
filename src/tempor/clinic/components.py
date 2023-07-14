@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optiona
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+import streamlit_extras
+from packaging.version import Version
 from typing_extensions import Literal, Protocol
 
 from . import db_utils, field_def, utils
@@ -22,10 +24,18 @@ class AppSettings(NamedTuple):
     example_name: str
 
 
-def add_vertical_space(num_lines: int = 1):
-    """Add vertical space to your Streamlit app."""
-    for _ in range(num_lines):
-        st.write("")
+if "__version__" in dir(streamlit_extras) and (
+    Version(streamlit_extras.__version__) >= Version("0.2.2")  # type: ignore  # pylint: disable=no-member
+):
+
+    def add_vertical_space(num_lines: int = 1):
+        """Add vertical space to your Streamlit app."""
+        for _ in range(num_lines):
+            st.write("")
+
+else:
+    # pylint: disable-next=import-error,no-name-in-module
+    from streamlit_extras.add_vertical_space import add_vertical_space  # type: ignore
 
 
 def page_config(app_settings: AppSettings, icon_path: Optional[str] = None) -> None:
