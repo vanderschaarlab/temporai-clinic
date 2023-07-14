@@ -60,3 +60,5 @@ outputs/**
 data/**
 codecov
 workspace
+
+secrets.toml

@@ -256,10 +256,10 @@ html_theme_options = {
         },
     ],
     # BEGIN: version_dropdown
-    "version_dropdown": True,
+    "version_dropdown": False,
     "version_info": [
         {
-            "version": "https://temporai.readthedocs.io/en/latest/",
+            "version": "https://temporai-clinic.readthedocs.io/en/latest/",
             "title": "ReadTheDocs",
             "aliases": [],
         },
