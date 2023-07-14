@@ -13,13 +13,13 @@ from .const import DataDefsCollectionDict, DataSample
 
 
 def connect_to_db(
-    secret_env_var_name: str, db_name: str, drive_name: Optional[str] = None
+    deta_key_secret: str, base_name_env_var: str, drive_name_env_var: Optional[str] = None
 ) -> Tuple[Deta, DetaBase, Optional[DetaDrive]]:
-    deta = Deta(st.secrets[secret_env_var_name])
-    base = deta.Base(db_name)
+    deta = Deta(st.secrets[deta_key_secret])
+    base = deta.Base(st.secrets[base_name_env_var])
     drive: Optional[DetaDrive] = None
-    if drive_name:
-        drive = deta.Drive(drive_name)
+    if drive_name_env_var:
+        drive = deta.Drive(st.secrets[drive_name_env_var])
     return deta, base, drive
 
 
