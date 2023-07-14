@@ -609,11 +609,13 @@ def risk_estimation_time_max_slider(min_value: Any, max_value: Any, step: Any, i
 
 def risk_prediction_chart(
     data_sample: DataSample,
-    x_axis_title: str,
-    y_axis_title: str,
+    time_axis_title: str,
+    risk_axis_title: str,
     time_max: Any,
     time_resolution: Any,
     risk_prediction_callback: RiskPredictionCallback,
+    time_format: Optional[str] = None,
+    risk_format: Optional[str] = None,
     **kwargs,
 ):
     risk_predictions = risk_prediction_callback(
@@ -628,9 +630,23 @@ def risk_prediction_chart(
         color_discrete_sequence=["red"],
         range_y=(0.0, 1.0 + 0.1),  # `+ 0.1` to make sure the grid-line at y=1 gets displayed.
     )
-    fig.update_traces(hovertemplate="<b>" + y_axis_title + "</b>: %{y:.3f}<br><b>" + x_axis_title + "</b>: %{x}<br>")
-    fig.update_xaxes(title=x_axis_title)
-    fig.update_yaxes(title=y_axis_title)
+    fig.update_traces(
+        hovertemplate=(
+            "<b>"
+            + risk_axis_title
+            + "</b>: %{y"
+            + ((":" + risk_format) if risk_format is not None else "")
+            + "}<br><b>"
+            + time_axis_title
+            + "</b>: %{x"
+            + ((":" + time_format) if time_format is not None else "")
+            + "}<br>"
+        )
+    )
+    fig.update_xaxes(title=time_axis_title)
+    fig.update_yaxes(title=risk_axis_title)
+    fig.update_layout(yaxis_tickformat=time_format)
+    fig.update_layout(yaxis_tickformat=risk_format)
     st.plotly_chart(fig, use_container_width=True)
     # For debug, show data:
     # st.write(risk_predictions)
