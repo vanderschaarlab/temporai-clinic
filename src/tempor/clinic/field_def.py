@@ -8,7 +8,7 @@ from typing_extensions import Literal
 
 from tempor.clinic.const import DEFAULTS, STATE_KEYS, DataDefsCollectionDict, DataModality
 
-DataType = Literal["int", "float", "categorical", "binary", "time_index", "computed"]
+DataType = Literal["int", "float", "categorical", "binary", "str", "time_index", "computed"]
 TimeIndexType = Literal["date", "int", "float"]
 ComputedType = Literal["float"]
 
@@ -230,6 +230,32 @@ class BinaryDef(FieldDef):
         return bool(value)
 
 
+class StrDef(FieldDef):
+    data_type: ClassVar[DataType] = "str"
+    default_value: str = ""
+
+    def _default_value_formatting(self) -> str:
+        return ""
+
+    def _render_widget(self, value: str) -> Any:
+        return st.text_area(
+            label=self.readable_name,
+            key=get_widget_st_key(self),
+            value=value,
+            help=self.info,
+        )
+
+    def get_default_value(self) -> str:
+        # Overridden to add type hint only.
+        return super().get_default_value()
+
+    def _default_transform_db_to_input(self, value: Any) -> str:
+        return str(value)
+
+    def _default_transform_input_to_db(self, value: Any) -> str:
+        return str(value)
+
+
 class TimeIndexDef(FieldDef):
     time_index_type: ClassVar[TimeIndexType]
     data_type: ClassVar[DataType] = "time_index"
@@ -326,6 +352,8 @@ def _parse_field_defs_dict(field_defs: Dict[str, Dict], data_modality: DataModal
             parsed[feature_name] = CategoricalDef(feature_name=feature_name, data_modality=data_modality, **field_def)
         elif field_def["data_type"] == "binary":
             parsed[feature_name] = BinaryDef(feature_name=feature_name, data_modality=data_modality, **field_def)
+        elif field_def["data_type"] == "str":
+            parsed[feature_name] = StrDef(feature_name=feature_name, data_modality=data_modality, **field_def)
         elif field_def["data_type"] == "time_index":
             if field_def["time_index_type"] == "int":
                 parsed[feature_name] = IntTimeIndexDef(
