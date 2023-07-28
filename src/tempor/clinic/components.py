@@ -2,7 +2,7 @@ import os
 import random
 import string
 import time
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Union, cast
 
 import pandas as pd
 import plotly.express as px
@@ -374,11 +374,13 @@ def static_data_table(
     db: "DetaBase",
     field_defs: field_def.FieldDefsCollection,
     data_sample: DataSample,
+    heading: str = "### Static Data",
+    heading_row_columns: Sequence[Union[int, float]] = (0.3, 0.066, 0.734),
 ) -> None:
-    col_title, col_edit, _ = st.columns([0.3, 0.2 / 3, 1 - (0.3 + 0.2 / 3)])
+    col_title, col_edit, *_ = st.columns(heading_row_columns)
 
     with col_title:
-        st.markdown("### Static Data")
+        st.markdown(heading)
     with col_edit:
         edit_btn = st.button("🖊️", help=f"Edit {app_settings.example_name} static data")
         if edit_btn:
@@ -434,15 +436,25 @@ def temporal_data_table(
     db: "DetaBase",
     field_defs: field_def.FieldDefsCollection,
     data_sample: DataSample,
+    heading: str = "### Temporal Data",
+    split_heading_and_buttons: bool = False,
+    heading_row_columns: Sequence[Union[int, float]] = (0.5, 0.133, 0.133, 0.134, 0.1),
 ) -> None:
+    # If split_heading_and_buttons == True, the heading_row_columns should NOT include the dimensions for
+    # the heading column - the hading will be on its own row.
+
     n_timesteps = len(data_sample.temporal)
 
-    col_title, col_edit, col_add, col_delete, _ = st.columns([0.5, 0.4 / 3, 0.4 / 3, 0.4 / 3, 0.1])
+    if not split_heading_and_buttons:
+        col_title, col_edit, col_add, col_delete, *_ = st.columns(heading_row_columns)
+    else:
+        col_title = st.container()
+        col_edit, col_add, col_delete, *_ = st.columns(heading_row_columns)
     col_left, col_select, col_right, col_steps = st.columns([0.15, 0.4, 0.15, 0.3])
     validation_error_container = st.container()
 
     with col_title:
-        st.markdown("### Temporal Data")
+        st.markdown(heading)
     with col_edit:
         edit_btn = st.button("🖊️", help=f"Edit {app_settings.example_name} time-step data")
         if edit_btn:
