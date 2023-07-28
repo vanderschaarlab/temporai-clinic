@@ -28,16 +28,15 @@ class FieldDef(BaseModel, abc.ABC):
     data_modality: DataModality
     feature_name: str
     readable_name: str
+    default_value: Any = None
     formatting: Optional[str] = None
+    info: Optional[str] = None
+
     transform_input_to_db: Optional[Callable] = None
     transform_db_to_input: Optional[Callable] = None
 
     @abc.abstractmethod
     def _render_widget(self, value: Any) -> Any:
-        ...
-
-    @abc.abstractmethod
-    def get_default_value(self) -> Any:
         ...
 
     @abc.abstractmethod
@@ -51,6 +50,11 @@ class FieldDef(BaseModel, abc.ABC):
     @abc.abstractmethod
     def _default_value_formatting(self) -> str:
         ...
+
+    def get_default_value(self) -> Any:
+        # NOTE: Ideally this should also ve overridden in the derived classes, in order to update type hints,
+        # or add any additional logic.
+        return self.default_value
 
     def get_formatting(self) -> str:
         if self.formatting is not None:
@@ -81,6 +85,7 @@ class FieldDefsCollection(NamedTuple):
 
 class IntDef(FieldDef):
     data_type: ClassVar[DataType] = "int"
+    default_value: Optional[int] = None
 
     def _default_value_formatting(self) -> str:
         return ":n"
@@ -97,10 +102,26 @@ class IntDef(FieldDef):
             max_value=self.max_value,
             step=self.step,
             value=value,
+            help=self.info,
         )
 
     def get_default_value(self) -> int:
-        return self.min_value if self.min_value is not None else 0
+        if self.default_value is not None:
+            if self.min_value is not None and self.default_value < self.min_value:
+                raise ValueError(
+                    f"The default value set for '{self.feature_name}', `{self.default_value}` is "
+                    f"less than the minimum value set, `{self.min_value}`"
+                )
+            if self.max_value is not None and self.default_value > self.max_value:
+                raise ValueError(
+                    f"The default value set for '{self.feature_name}', `{self.default_value}` is "
+                    f"greater than the maximum value set, `{self.max_value}`"
+                )
+        return (
+            self.default_value
+            if self.default_value is not None
+            else (self.min_value if self.min_value is not None else 0)
+        )
 
     def _default_transform_db_to_input(self, value: Any) -> int:
         return int(value)
@@ -111,6 +132,7 @@ class IntDef(FieldDef):
 
 class FloatDef(FieldDef):
     data_type: ClassVar[DataType] = "float"
+    default_value: Optional[float] = None
 
     def _default_value_formatting(self) -> str:
         return ":.2f"
@@ -127,10 +149,26 @@ class FloatDef(FieldDef):
             max_value=self.max_value,
             step=self.step,
             value=value,
+            help=self.info,
         )
 
     def get_default_value(self) -> float:
-        return self.min_value if self.min_value is not None else 0.0
+        if self.default_value is not None:
+            if self.min_value is not None and self.default_value < self.min_value:
+                raise ValueError(
+                    f"The default value set for '{self.feature_name}', `{self.default_value}` is "
+                    f"less than the minimum value set, `{self.min_value}`"
+                )
+            if self.max_value is not None and self.default_value > self.max_value:
+                raise ValueError(
+                    f"The default value set for '{self.feature_name}', `{self.default_value}` is "
+                    f"greater than the maximum value set, `{self.max_value}`"
+                )
+        return (
+            self.default_value
+            if self.default_value is not None
+            else (self.min_value if self.min_value is not None else 0)
+        )
 
     def _default_transform_db_to_input(self, value: Any) -> float:
         return float(value)
@@ -141,6 +179,7 @@ class FloatDef(FieldDef):
 
 class CategoricalDef(FieldDef):
     data_type: ClassVar[DataType] = "categorical"
+    default_value: Optional[str] = None
 
     def _default_value_formatting(self) -> str:
         return ""
@@ -153,9 +192,15 @@ class CategoricalDef(FieldDef):
             key=get_widget_st_key(self),
             options=self.options,
             index=self.options.index(value),
+            help=self.info,
         )
 
     def get_default_value(self) -> str:
+        if self.default_value is not None and self.default_value not in self.options:
+            raise ValueError(
+                f"The default value defined for '{self.feature_name}' was '{self.default_value}', which "
+                f"is not one of the options defined ({self.options}). This is not allowed."
+            )
         return self.options[0]
 
     def _default_transform_db_to_input(self, value: Any) -> str:
@@ -167,19 +212,16 @@ class CategoricalDef(FieldDef):
 
 class BinaryDef(FieldDef):
     data_type: ClassVar[DataType] = "binary"
+    default_value: bool = False
 
     def _default_value_formatting(self) -> str:
         return ""
 
     def _render_widget(self, value: bool) -> Any:
-        return st.checkbox(
-            label=self.readable_name,
-            key=get_widget_st_key(self),
-            value=value,
-        )
+        return st.checkbox(label=self.readable_name, key=get_widget_st_key(self), value=value, help=self.info)
 
     def get_default_value(self) -> bool:
-        return False
+        return self.default_value
 
     def _default_transform_db_to_input(self, value: Any) -> bool:
         return bool(value)
@@ -214,6 +256,8 @@ class FloatTimeIndexDef(FloatDef, TimeIndexDef):
 class DateTimeIndexDef(TimeIndexDef):
     time_index_type: ClassVar[TimeIndexType] = "date"
 
+    default_value: Optional[datetime.datetime] = None
+
     min_value: Optional[datetime.date] = None
     max_value: Optional[datetime.date] = None
 
@@ -230,7 +274,10 @@ class DateTimeIndexDef(TimeIndexDef):
         )
 
     def get_default_value(self) -> datetime.date:
-        return datetime.datetime.now().date()
+        if self.default_value is None:
+            return datetime.datetime.now().date()
+        else:
+            return self.default_value
 
     def get_next(self, value: datetime.date) -> datetime.date:
         return value + datetime.timedelta(days=1)
@@ -249,7 +296,11 @@ class ComputedDef(FieldDef):
     computation: Callable[[Dict], Any]
 
     def _render_widget(self, value: float) -> Any:
-        return st.markdown(f"{self.readable_name}:\n`Computed automatically`")
+        return st.markdown(
+            f"{self.readable_name}:<br/>`Computed automatically`"
+            + (f"<br/>*{self.info}*" if self.info is not None else ""),
+            unsafe_allow_html=True,
+        )
 
     def compute(self, data: Dict) -> Any:
         # NOTE: Currently the data passed in here is:
