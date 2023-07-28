@@ -30,6 +30,7 @@ class FieldDef(BaseModel, abc.ABC):
     readable_name: str
     default_value: Any = None
     formatting: Optional[str] = None
+    info: Optional[str] = None
 
     transform_input_to_db: Optional[Callable] = None
     transform_db_to_input: Optional[Callable] = None
@@ -101,6 +102,7 @@ class IntDef(FieldDef):
             max_value=self.max_value,
             step=self.step,
             value=value,
+            help=self.info,
         )
 
     def get_default_value(self) -> int:
@@ -147,6 +149,7 @@ class FloatDef(FieldDef):
             max_value=self.max_value,
             step=self.step,
             value=value,
+            help=self.info,
         )
 
     def get_default_value(self) -> float:
@@ -189,6 +192,7 @@ class CategoricalDef(FieldDef):
             key=get_widget_st_key(self),
             options=self.options,
             index=self.options.index(value),
+            help=self.info,
         )
 
     def get_default_value(self) -> str:
@@ -214,11 +218,7 @@ class BinaryDef(FieldDef):
         return ""
 
     def _render_widget(self, value: bool) -> Any:
-        return st.checkbox(
-            label=self.readable_name,
-            key=get_widget_st_key(self),
-            value=value,
-        )
+        return st.checkbox(label=self.readable_name, key=get_widget_st_key(self), value=value, help=self.info)
 
     def get_default_value(self) -> bool:
         return self.default_value
@@ -296,7 +296,11 @@ class ComputedDef(FieldDef):
     computation: Callable[[Dict], Any]
 
     def _render_widget(self, value: float) -> Any:
-        return st.markdown(f"{self.readable_name}:\n`Computed automatically`")
+        return st.markdown(
+            f"{self.readable_name}:<br/>`Computed automatically`"
+            + (f"<br/>*{self.info}*" if self.info is not None else ""),
+            unsafe_allow_html=True,
+        )
 
     def compute(self, data: Dict) -> Any:
         # NOTE: Currently the data passed in here is:
