@@ -1,16 +1,18 @@
 import abc
 import datetime
-from typing import Any, Callable, ClassVar, Dict, List, NamedTuple, Optional
+from typing import Any, Callable, ClassVar, Dict, List, NamedTuple, Optional, Union
 
 import streamlit as st
 from pydantic import BaseModel
 from typing_extensions import Literal
 
-from tempor.clinic.const import DEFAULTS, STATE_KEYS, DataDefsCollectionDict, DataModality
+from tempor.clinic.const import DEFAULTS, STATE_KEYS, DataDefsCollectionDict, DataModality, DataSample
 
 DataType = Literal["int", "float", "categorical", "binary", "str", "time_index", "computed"]
 TimeIndexType = Literal["date", "int", "float"]
 ComputedType = Literal["float"]
+
+TimeStep = Union[datetime.date, float, int]
 
 
 def get_widget_st_key(field_def: "FieldDef") -> str:
@@ -319,7 +321,7 @@ class ComputedDef(FieldDef):
     computed_type: ClassVar[ComputedType]
     data_type: ClassVar[DataType] = "computed"
 
-    computation: Callable[[Dict], Any]
+    computation: Callable[[DataSample, TimeStep], Any]
 
     def _render_widget(self, value: float) -> Any:
         return st.markdown(
@@ -328,12 +330,20 @@ class ComputedDef(FieldDef):
             unsafe_allow_html=True,
         )
 
-    def compute(self, data: Dict) -> Any:
-        # NOTE: Currently the data passed in here is:
-        #   - the static data for static data computed fields.
-        #   - the temporal data *for the current timestep* for temporal data computed fields.
-        #   - event computed data case not handled.
-        return self.computation(data)
+    def compute(self, data_sample: DataSample, current_timestep: TimeStep) -> Any:
+        """Make whatever computation the field requires and return the computed value.
+
+        Note:
+            The computation cascades from static data, to time series data, to event data.
+
+        Args:
+            data_sample (DataSample): Sample data object, before computation.
+            current_timestep (TimeStep): The currently selected time step.
+
+        Returns:
+            Any: The resultant computed value.
+        """
+        return self.computation(data_sample, current_timestep)
 
 
 class FloatComputedDef(ComputedDef, FloatDef):
@@ -412,38 +422,75 @@ def parse_field_defs(field_defs_raw: DataDefsCollectionDict) -> FieldDefsCollect
 
 
 def get_default(field_defs: Dict[str, FieldDef]) -> Dict[str, Dict]:
-    data_sample = dict()
+    data_fields = dict()
 
     # Get defaults for non-computed fields:
     for field_name, field_def in field_defs.items():
         if field_def.data_type != "computed":
-            data_sample[field_name] = field_def.get_default_value()
+            data_fields[field_name] = field_def.get_default_value()
+
+    return data_fields
+
+
+def get_default_computed(
+    field_defs: Dict[str, FieldDef],
+    modality: DataModality,
+    data_sample_before_computation: DataSample,
+    current_timestep: TimeStep,
+) -> Dict[str, Dict]:
+    if modality == "static":
+        data_fields = data_sample_before_computation.static.copy()
+    elif modality == "temporal":
+        data_fields = data_sample_before_computation.temporal[-1].copy()
+    elif modality == "event":
+        # TODO: This is to be revised.
+        data_fields = data_sample_before_computation.event[-1].copy()
+    else:
+        raise ValueError(f"Unknown modality encountered: {modality}")
+
     # Compute the computed fields:
     for field_name, field_def in field_defs.items():
         if field_def.data_type == "computed":
             if not isinstance(field_def, ComputedDef):
                 raise RuntimeError
-            data_sample[field_name] = field_def.compute(data_sample)
+            data_fields[field_name] = field_def.compute(data_sample_before_computation, current_timestep)
 
-    return data_sample
+    return data_fields
 
 
-def update(field_defs: Dict[str, FieldDef], session_state: Any) -> Dict[str, Dict]:
-    data_sample = dict()
+def update(
+    field_defs: Dict[str, FieldDef],
+    session_state: Any,
+    modality: DataModality,
+    data_sample: DataSample,
+    current_timestep: TimeStep,
+) -> Dict[str, Dict]:
+    data_fields = dict()
 
     # Update non-computed fields:
     for field_name, field_def in field_defs.items():
         key = get_widget_st_key(field_def)
         if field_def.data_type != "computed":
-            data_sample[field_name] = session_state[key]
+            data_fields[field_name] = session_state[key]
+
+    if modality == "static":
+        data_sample.static = data_fields
+    elif modality == "temporal":
+        data_sample.temporal[current_timestep] = data_fields
+    elif modality == "event":
+        # TODO: This is to be revised.
+        data_sample.event[current_timestep] = data_fields
+    else:
+        raise ValueError(f"Unknown modality encountered: {modality}")
+
     # Update computed fields:
     for field_name, field_def in field_defs.items():
         if field_def.data_type == "computed":
             if not isinstance(field_def, ComputedDef):
                 raise RuntimeError
-            data_sample[field_name] = field_def.compute(data_sample)
+            data_fields[field_name] = field_def.compute(data_sample, current_timestep)
 
-    return data_sample
+    return data_fields
 
 
 def process_db_to_input(field_defs: Dict[str, FieldDef], data: Dict) -> Dict:

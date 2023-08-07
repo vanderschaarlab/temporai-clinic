@@ -94,7 +94,7 @@ def _delete_current_example(app_state: AppState, db: "DetaBase"):
 
 
 def _add_new_sample(app_state: AppState, db: "DetaBase", key: str, field_defs: field_def.FieldDefsCollection):
-    deta_utils.add_empty_sample(db=db, key=key, field_defs=field_defs)
+    deta_utils.add_empty_sample(db=db, key=key, field_defs=field_defs, current_timestep=app_state.current_timestep)
     app_state.current_sample = key
 
 
@@ -242,7 +242,13 @@ def _update_sample_static_data(
     if current_sample is None:
         raise RuntimeError("`current_sample` was `None`")
 
-    static = field_def.update(field_defs=field_defs.static, session_state=st.session_state)
+    static = field_def.update(
+        field_defs=field_defs.static,
+        session_state=st.session_state,
+        modality="static",
+        data_sample=data_sample,
+        current_timestep=app_state.current_timestep,
+    )
 
     data_sample = DataSample(static=static, temporal=data_sample.temporal, event=data_sample.event)
 
@@ -270,7 +276,13 @@ def _update_sample_temporal_data(
     if current_timestep is None:
         raise RuntimeError("`current_timestep` was `None`")
 
-    temporal = field_def.update(field_defs=field_defs.temporal, session_state=st.session_state)
+    temporal = field_def.update(
+        field_defs=field_defs.temporal,
+        session_state=st.session_state,
+        modality="temporal",
+        data_sample=data_sample,
+        current_timestep=current_timestep,
+    )
 
     # --- --- ---
     # If user sets time index to a time index that is the same as the time index in another existing time-step,
@@ -316,6 +328,13 @@ def _add_sample_temporal_data(
         raise RuntimeError("`current_sample` was `None`")
 
     new_timestep = field_def.get_default(field_defs.temporal)
+    new_timestep = field_def.get_default_computed(
+        field_defs=field_defs.temporal,
+        modality="temporal",
+        data_sample_before_computation=data_sample,
+        current_timestep=app_state.current_timestep,
+    )
+
     new_timestep[DEFAULTS.time_index_field] = new_time_index
     data_sample.temporal += [new_timestep]
 

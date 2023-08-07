@@ -82,19 +82,52 @@ def get_sample(key: str, db: DetaBase, field_defs: "field_def.FieldDefsCollectio
     return DataSample(static=static, temporal=temporal, event=event)
 
 
-def add_empty_sample(db: DetaBase, key: str, field_defs: "field_def.FieldDefsCollection"):
-    static = field_def.get_default(field_defs=field_defs.static) if field_defs.static else {}
-    temporal: Any = [field_def.get_default(field_defs=field_defs.temporal)] if field_defs.temporal else []
-    event: Any = [field_def.get_default(field_defs=field_defs.event)] if field_defs.event else []
+def add_empty_sample(db: DetaBase, key: str, field_defs: "field_def.FieldDefsCollection", current_timestep: Any):
+    # Get non-computed defaults.
+    static = field_def.get_default(field_defs=field_defs.static) if field_defs.static else dict()
+    temporal_0 = field_def.get_default(field_defs=field_defs.temporal) if field_defs.temporal else dict()
+    event_0 = field_def.get_default(field_defs=field_defs.event) if field_defs.event else dict()
+
+    data_sample = DataSample(
+        static=static,
+        temporal=[temporal_0] if temporal_0 else [],
+        event=[event_0] if event_0 else [],
+    )
+
+    # Get computed defaults.
+    if field_defs.static:
+        data_sample.static = field_def.get_default_computed(
+            field_defs=field_defs.static,
+            modality="static",
+            data_sample_before_computation=data_sample,
+            current_timestep=current_timestep,
+        )
+    if field_defs.temporal:
+        temporal_0 = field_def.get_default_computed(
+            field_defs=field_defs.temporal,
+            modality="temporal",
+            data_sample_before_computation=data_sample,
+            current_timestep=current_timestep,
+        )
+        data_sample.temporal = [temporal_0]
+    if field_defs.event:
+        # TODO: Event is not yet properly handled.
+        event_0 = field_def.get_default_computed(
+            field_defs=field_defs.event,
+            modality="event",
+            data_sample_before_computation=data_sample,
+            current_timestep=current_timestep,
+        )
+        data_sample.event = [event_0]
 
     static = field_def.process_input_to_db(field_defs=field_defs.static, data=static)
-    temporal = [field_def.process_input_to_db(field_defs=field_defs.temporal, data=x) for x in temporal]
-    event = [field_def.process_input_to_db(field_defs=field_defs.event, data=x) for x in event]
+    temporal = [field_def.process_input_to_db(field_defs=field_defs.temporal, data=temporal_0)]
+    event = [field_def.process_input_to_db(field_defs=field_defs.event, data=event_0)]
 
-    data_sample = dict(DataSample(static=static, temporal=temporal, event=event))
+    data_sample_for_db = dict(DataSample(static=static, temporal=temporal, event=event))
 
-    print(f"Adding new sample to db.\nkey: {key}\ndata:\n{data_sample}")
-    db.put(data_sample, key=key)
+    print(f"Adding new sample to db.\nkey: {key}\ndata:\n{data_sample_for_db}")
+    db.put(data_sample_for_db, key=key)
 
 
 def delete_sample(db: DetaBase, key: str):
