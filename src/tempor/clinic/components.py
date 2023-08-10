@@ -9,6 +9,7 @@ import plotly.express as px
 import streamlit as st
 import streamlit_extras
 from packaging.version import Version
+from streamlit_modal import Modal
 from typing_extensions import Literal, Protocol
 
 from . import deta_utils, field_def, utils
@@ -52,7 +53,32 @@ def sidebar(
     logo_path: Optional[str] = None,
     logo_width: int = 75,
     description_html: Optional[str] = None,
+    pop_up_label: Optional[str] = None,
+    pop_up_content: Optional[str] = None,
+    pop_up_width: int = 800,
 ) -> None:
+    # CSS hacks necessary to give the pop-up modal a correct width and height.
+    st.markdown(
+        f"""
+        <style>
+            div[data-modal-container='true'][key='sidebar-modal'] > div:first-child {{
+                width: {pop_up_width}px;
+            }}
+            div[data-modal-container='true'][key='sidebar-modal'] > div:first-child > div:first-child > div:first-child {{
+                width: {pop_up_width}px;
+                overflow-y: scroll;
+                max-height: 600px;
+                overflow-x: hidden;
+            }}
+            div[data-modal-container='true'][key='sidebar-modal'] > div > div:nth-child(2) > div {{
+                width: {pop_up_width}px !important;
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Sidebar content:
     with st.sidebar:
         st.image(
             os.path.join(DEFAULTS.assets_dir, logo_path if logo_path is not None else DEFAULTS.logo), width=logo_width
@@ -79,6 +105,15 @@ def sidebar(
                 """,
                 unsafe_allow_html=True,
             )
+        if pop_up_label is not None:
+            add_vertical_space(1)
+            modal = Modal(pop_up_label, key="sidebar-modal", max_width=pop_up_width)
+            open_modal = st.button(label=pop_up_label)
+            if open_modal:
+                modal.open()
+            if modal.is_open():
+                with modal.container():
+                    st.markdown(pop_up_content if pop_up_content is not None else "No pop-up content provided.")
 
 
 def _set_current_example(app_state: AppState, sample_selector_key: str):
