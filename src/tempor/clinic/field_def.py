@@ -360,8 +360,9 @@ class ComputedDef(FieldDef):
 
     def _render_widget(self, value: Any) -> Any:
         return st.markdown(
-            f"{self.get_full_label()}:<br/>`Computed automatically`"
-            + (f"<br/>*{self.info}*" if self.info is not None else ""),
+            f"{self.get_full_label()}:<br/>`Computed automatically"
+            + (f": {self.info}" if self.info is not None else "")
+            + "`",
             unsafe_allow_html=True,
         )
 
