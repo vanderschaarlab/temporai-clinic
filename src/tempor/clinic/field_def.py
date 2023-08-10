@@ -1,6 +1,6 @@
 import abc
 import datetime
-from typing import Any, Callable, ClassVar, Dict, List, NamedTuple, Optional, Type, Union
+from typing import Any, Callable, ClassVar, Dict, List, NamedTuple, Optional, Type, Union, cast
 
 import streamlit as st
 from pydantic import BaseModel
@@ -9,6 +9,9 @@ from typing_extensions import Literal
 from tempor.clinic.const import DEFAULTS, STATE_KEYS, DataDefsCollectionDict, DataModality, DataSample
 
 DataType = Literal["int", "float", "categorical", "binary", "str", "date"]
+
+TimestepDefaultMode = Literal["no_action", "take_previous"]
+FirstStepCaseIndicator = Literal["first_step"]
 
 TimeStep = Union[datetime.date, float, int]
 
@@ -31,6 +34,7 @@ class FieldDef(BaseModel, abc.ABC):
     feature_name: str
     readable_name: str
     default_value: Any = None
+    timestep_default_mode: TimestepDefaultMode = "no_action"
     formatting: Optional[str] = None
     info: Optional[str] = None
 
@@ -53,10 +57,36 @@ class FieldDef(BaseModel, abc.ABC):
     def _default_value_formatting(self) -> str:
         ...
 
-    def get_default_value(self) -> Any:
-        # NOTE: Ideally this should also ve overridden in the derived classes, in order to update type hints,
-        # or add any additional logic.
+    def _get_processed_default_value(self) -> Any:
+        # NOTE: Override in the derived classes to add any additional logic.
         return self.default_value
+
+    def get_default_value(
+        self, modality: DataModality, data_sample: Union[DataSample, FirstStepCaseIndicator, None] = None
+    ) -> Any:
+        if modality == "static":
+            return self._get_processed_default_value()
+        elif modality == "temporal":
+            if self.timestep_default_mode == "no_action":
+                return self._get_processed_default_value()
+            elif self.timestep_default_mode == "take_previous":
+                if data_sample is None:
+                    raise ValueError(
+                        "`data_sample` must be provided or `'first_step'` must be passed when "
+                        "`timestep_default_mode` is `take_previous`."
+                    )
+                if data_sample == "first_step":
+                    return self._get_processed_default_value()
+                else:
+                    data_sample = cast(DataSample, data_sample)
+                    return data_sample.temporal[-1][self.feature_name]
+            else:
+                raise ValueError(f"Unknown `timestep_default_mode`: {self.timestep_default_mode}")
+        elif modality == "event":
+            # TODO: Subject to change.
+            return self._get_processed_default_value()
+        else:
+            raise ValueError(f"Unknown modality: {modality}")
 
     def get_formatting(self) -> str:
         if self.formatting is not None:
@@ -107,7 +137,7 @@ class IntDef(FieldDef):
             help=self.info,
         )
 
-    def get_default_value(self) -> int:
+    def _get_processed_default_value(self) -> int:
         if self.default_value is not None:
             if self.min_value is not None and self.default_value < self.min_value:
                 raise ValueError(
@@ -154,7 +184,7 @@ class FloatDef(FieldDef):
             help=self.info,
         )
 
-    def get_default_value(self) -> float:
+    def _get_processed_default_value(self) -> float:
         if self.default_value is not None:
             if self.min_value is not None and self.default_value < self.min_value:
                 raise ValueError(
@@ -197,7 +227,7 @@ class CategoricalDef(FieldDef):
             help=self.info,
         )
 
-    def get_default_value(self) -> str:
+    def _get_processed_default_value(self) -> str:
         if self.default_value is not None and self.default_value not in self.options:
             raise ValueError(
                 f"The default value defined for '{self.feature_name}' was '{self.default_value}', which "
@@ -222,7 +252,7 @@ class BinaryDef(FieldDef):
     def _render_widget(self, value: bool) -> Any:
         return st.checkbox(label=self.readable_name, key=get_widget_st_key(self), value=value, help=self.info)
 
-    def get_default_value(self) -> bool:
+    def _get_processed_default_value(self) -> bool:
         return self.default_value
 
     def _default_transform_db_to_input(self, value: Any) -> bool:
@@ -247,9 +277,8 @@ class StrDef(FieldDef):
             help=self.info,
         )
 
-    def get_default_value(self) -> str:
-        # Overridden to add type hint only.
-        return super().get_default_value()
+    def _get_processed_default_value(self) -> str:
+        return self.default_value
 
     def _default_transform_db_to_input(self, value: Any) -> str:
         return str(value)
@@ -277,7 +306,7 @@ class DateDef(FieldDef):
             value=value,
         )
 
-    def get_default_value(self) -> datetime.date:
+    def _get_processed_default_value(self) -> datetime.date:
         if self.default_value is None:
             return datetime.datetime.now().date()
         else:
@@ -456,13 +485,17 @@ def parse_field_defs(field_defs_raw: DataDefsCollectionDict) -> FieldDefsCollect
     )
 
 
-def get_default(field_defs: Dict[str, FieldDef]) -> Dict[str, Dict]:
+def get_default(
+    field_defs: Dict[str, FieldDef],
+    modality: DataModality,
+    data_sample: Union[DataSample, FirstStepCaseIndicator, None] = None,
+) -> Dict[str, Dict]:
     data_fields = dict()
 
     # Get defaults for non-computed fields:
     for field_name, field_def in field_defs.items():
         if not field_def.is_computed:
-            data_fields[field_name] = field_def.get_default_value()
+            data_fields[field_name] = field_def.get_default_value(modality=modality, data_sample=data_sample)
 
     return data_fields
 

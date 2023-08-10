@@ -329,7 +329,7 @@ def _add_sample_temporal_data(
     if current_sample is None:
         raise RuntimeError("`current_sample` was `None`")
 
-    new_timestep = field_def.get_default(field_defs.temporal)
+    new_timestep = field_def.get_default(field_defs.temporal, modality="temporal", data_sample=data_sample)
     new_timestep = field_def.get_default_computed(
         field_defs=field_defs.temporal,
         modality="temporal",

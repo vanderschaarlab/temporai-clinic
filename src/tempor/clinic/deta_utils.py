@@ -84,9 +84,13 @@ def get_sample(key: str, db: DetaBase, field_defs: "field_def.FieldDefsCollectio
 
 def add_empty_sample(db: DetaBase, key: str, field_defs: "field_def.FieldDefsCollection", current_timestep: Any):
     # Get non-computed defaults.
-    static = field_def.get_default(field_defs=field_defs.static) if field_defs.static else dict()
-    temporal_0 = field_def.get_default(field_defs=field_defs.temporal) if field_defs.temporal else dict()
-    event_0 = field_def.get_default(field_defs=field_defs.event) if field_defs.event else dict()
+    static = field_def.get_default(field_defs=field_defs.static, modality="static") if field_defs.static else dict()
+    temporal_0 = (
+        field_def.get_default(field_defs=field_defs.temporal, modality="temporal", data_sample="first_step")
+        if field_defs.temporal
+        else dict()
+    )
+    event_0 = field_def.get_default(field_defs=field_defs.event, modality="event") if field_defs.event else dict()
 
     data_sample = DataSample(
         static=static,
