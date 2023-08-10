@@ -9,6 +9,7 @@ import plotly.express as px
 import streamlit as st
 import streamlit_extras
 from packaging.version import Version
+from streamlit_modal import Modal
 from typing_extensions import Literal, Protocol
 
 from . import deta_utils, field_def, utils
@@ -52,7 +53,32 @@ def sidebar(
     logo_path: Optional[str] = None,
     logo_width: int = 75,
     description_html: Optional[str] = None,
+    pop_up_label: Optional[str] = None,
+    pop_up_content: Optional[str] = None,
+    pop_up_width: int = 800,
 ) -> None:
+    # CSS hacks necessary to give the pop-up modal a correct width and height.
+    st.markdown(
+        f"""
+        <style>
+            div[data-modal-container='true'][key='sidebar-modal'] > div:first-child {{
+                width: {pop_up_width}px;
+            }}
+            div[data-modal-container='true'][key='sidebar-modal'] > div:first-child > div:first-child > div:first-child {{
+                width: {pop_up_width}px;
+                overflow-y: scroll;
+                max-height: 600px;
+                overflow-x: hidden;
+            }}
+            div[data-modal-container='true'][key='sidebar-modal'] > div > div:nth-child(2) > div {{
+                width: {pop_up_width}px !important;
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Sidebar content:
     with st.sidebar:
         st.image(
             os.path.join(DEFAULTS.assets_dir, logo_path if logo_path is not None else DEFAULTS.logo), width=logo_width
@@ -79,10 +105,20 @@ def sidebar(
                 """,
                 unsafe_allow_html=True,
             )
+        if pop_up_label is not None:
+            add_vertical_space(1)
+            modal = Modal(pop_up_label, key="sidebar-modal", max_width=pop_up_width)
+            open_modal = st.button(label=pop_up_label)
+            if open_modal:
+                modal.open()
+            if modal.is_open():
+                with modal.container():
+                    st.markdown(pop_up_content if pop_up_content is not None else "No pop-up content provided.")
 
 
 def _set_current_example(app_state: AppState, sample_selector_key: str):
     app_state.current_sample = st.session_state[sample_selector_key]
+    app_state.current_timestep = 0
 
 
 def _delete_current_example(app_state: AppState, db: "DetaBase"):
@@ -94,7 +130,8 @@ def _delete_current_example(app_state: AppState, db: "DetaBase"):
 
 
 def _add_new_sample(app_state: AppState, db: "DetaBase", key: str, field_defs: field_def.FieldDefsCollection):
-    deta_utils.add_empty_sample(db=db, key=key, field_defs=field_defs)
+    app_state.current_timestep = 0  # New sample is added with just one timestep, timestep 0.
+    deta_utils.add_empty_sample(db=db, key=key, field_defs=field_defs, current_timestep=app_state.current_timestep)
     app_state.current_sample = key
 
 
@@ -236,19 +273,33 @@ def sample_selector(
 
 
 def _update_sample_static_data(
-    app_state: AppState, db: "DetaBase", field_defs: field_def.FieldDefsCollection, data_sample: DataSample
+    app_state: AppState,
+    db: "DetaBase",
+    field_defs: field_def.FieldDefsCollection,
+    data_sample: DataSample,
+    computed_only: bool = False,
 ):
     current_sample = app_state.current_sample
     if current_sample is None:
         raise RuntimeError("`current_sample` was `None`")
 
-    static = field_def.update(field_defs=field_defs.static, session_state=st.session_state)
+    static = field_def.update(
+        field_defs=field_defs.static,
+        session_state=st.session_state,
+        modality="static",
+        data_sample=data_sample,
+        current_timestep=app_state.current_timestep,
+        computed_only=computed_only,
+    )
 
     data_sample = DataSample(static=static, temporal=data_sample.temporal, event=data_sample.event)
 
     deta_utils.update_sample(db=db, key=current_sample, data_sample=data_sample, field_defs=field_defs)
 
     app_state.interaction_state = "showing"
+
+    # TODO: Temporal computed fields may depend on the static fields.
+    # Need code to update them (all timesteps) upon static data change.
 
 
 def _show_validation_error(validation_error_container: Any, msg: str):
@@ -270,7 +321,13 @@ def _update_sample_temporal_data(
     if current_timestep is None:
         raise RuntimeError("`current_timestep` was `None`")
 
-    temporal = field_def.update(field_defs=field_defs.temporal, session_state=st.session_state)
+    temporal = field_def.update(
+        field_defs=field_defs.temporal,
+        session_state=st.session_state,
+        modality="temporal",
+        data_sample=data_sample,
+        current_timestep=current_timestep,
+    )
 
     # --- --- ---
     # If user sets time index to a time index that is the same as the time index in another existing time-step,
@@ -303,6 +360,11 @@ def _update_sample_temporal_data(
     app_state.current_timestep = current_timestep
     app_state.interaction_state = "showing"
 
+    # If any static fields are computed, since they may depend on the temporal data, re-compute them.
+    _update_sample_static_data(
+        app_state=app_state, db=db, field_defs=field_defs, data_sample=data_sample, computed_only=True
+    )
+
 
 def _add_sample_temporal_data(
     app_state: AppState,
@@ -315,9 +377,17 @@ def _add_sample_temporal_data(
     if current_sample is None:
         raise RuntimeError("`current_sample` was `None`")
 
-    new_timestep = field_def.get_default(field_defs.temporal)
+    new_timestep = field_def.get_default(field_defs.temporal, modality="temporal", data_sample=data_sample)
     new_timestep[DEFAULTS.time_index_field] = new_time_index
     data_sample.temporal += [new_timestep]
+
+    new_timestep = field_def.get_default_computed(
+        field_defs=field_defs.temporal,
+        modality="temporal",
+        data_sample_before_computation=data_sample,
+        current_timestep=app_state.current_timestep,
+    )
+    data_sample.temporal[-1] = new_timestep
 
     data_sample = DataSample(static=data_sample.static, temporal=data_sample.temporal, event=data_sample.event)
 
@@ -363,7 +433,7 @@ def _delete_sample_temporal_data(
 def _prepare_data_table(data: Dict[str, Any], field_defs: Dict[str, field_def.FieldDef]) -> pd.DataFrame:
     sample_df_dict = {"Record": [], "Value": []}  # type: ignore [var-annotated]
     for field_name, value in data.items():
-        sample_df_dict["Record"].append(field_defs[field_name].readable_name)
+        sample_df_dict["Record"].append(field_defs[field_name].get_full_label())
         sample_df_dict["Value"].append(utils.format_with_field_formatting(value, field_defs[field_name]))
     return pd.DataFrame(sample_df_dict).set_index("Record", drop=True)
 
@@ -439,6 +509,8 @@ def temporal_data_table(
     heading: str = "### Temporal Data",
     split_heading_and_buttons: bool = False,
     heading_row_columns: Sequence[Union[int, float]] = (0.5, 0.133, 0.133, 0.134, 0.1),
+    first_timestep_note: Optional[str] = None,
+    last_timestep_note: Optional[str] = None,
 ) -> None:
     # If split_heading_and_buttons == True, the heading_row_columns should NOT include the dimensions for
     # the heading column - the hading will be on its own row.
@@ -545,6 +617,12 @@ def temporal_data_table(
             cancel_btn_help="Cancel deleting the time-step data",
             button_cols_split=[0.3, 0.3, 0.4],
         )
+
+    if first_timestep_note is not None and app_state.current_timestep == 0:
+        st.info(first_timestep_note)
+    if last_timestep_note is not None and app_state.current_timestep == (n_timesteps - 1):
+        st.info(last_timestep_note)
+
     if app_state.interaction_state != "editing_temporal_data":
         timestep_df = _prepare_data_table(
             data=data_sample.temporal[app_state.current_timestep], field_defs=field_defs.temporal
@@ -575,10 +653,12 @@ def temporal_data_table(
 
 def temporal_data_chart(data_sample: DataSample, field_defs: field_def.FieldDefsCollection):
     feature_keys = list(field_defs.temporal.keys())
-    feature_readable_names = [fd.readable_name for _, fd in field_defs.temporal.items()]
+    feature_readable_names = [fd.get_full_label() for _, fd in field_defs.temporal.items()]
     selectbox_feature_keys = [feature_key for feature_key in feature_keys if feature_key != DEFAULTS.time_index_field]
     selectbox_feature_readable_names = [
-        fd.readable_name for feature_key, fd in field_defs.temporal.items() if feature_key != DEFAULTS.time_index_field
+        fd.get_full_label()
+        for feature_key, fd in field_defs.temporal.items()
+        if feature_key != DEFAULTS.time_index_field
     ]
 
     selected_feature_readable_name = st.selectbox(label="Time series", options=selectbox_feature_readable_names)

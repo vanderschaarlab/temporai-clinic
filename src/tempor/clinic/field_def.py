@@ -1,16 +1,19 @@
 import abc
 import datetime
-from typing import Any, Callable, ClassVar, Dict, List, NamedTuple, Optional
+from typing import Any, Callable, ClassVar, Dict, List, NamedTuple, Optional, Type, Union, cast
 
 import streamlit as st
 from pydantic import BaseModel
 from typing_extensions import Literal
 
-from tempor.clinic.const import DEFAULTS, STATE_KEYS, DataDefsCollectionDict, DataModality
+from tempor.clinic.const import DEFAULTS, STATE_KEYS, DataDefsCollectionDict, DataModality, DataSample
 
-DataType = Literal["int", "float", "categorical", "binary", "str", "time_index", "computed"]
-TimeIndexType = Literal["date", "int", "float"]
-ComputedType = Literal["float"]
+DataType = Literal["int", "float", "categorical", "binary", "str", "date"]
+
+TimestepDefaultMode = Literal["no_action", "take_previous"]
+FirstStepCaseIndicator = Literal["first_step"]
+
+TimeStep = Union[datetime.date, float, int]
 
 
 def get_widget_st_key(field_def: "FieldDef") -> str:
@@ -24,11 +27,17 @@ def get_widget_st_key(field_def: "FieldDef") -> str:
 
 class FieldDef(BaseModel, abc.ABC):
     data_type: ClassVar[DataType]
+    is_time_index: ClassVar[bool] = False
+    is_computed: ClassVar[bool] = False
 
     data_modality: DataModality
     feature_name: str
     readable_name: str
+    units: Optional[str] = None
+
     default_value: Any = None
+    timestep_default_mode: TimestepDefaultMode = "no_action"
+
     formatting: Optional[str] = None
     info: Optional[str] = None
 
@@ -51,10 +60,42 @@ class FieldDef(BaseModel, abc.ABC):
     def _default_value_formatting(self) -> str:
         ...
 
-    def get_default_value(self) -> Any:
-        # NOTE: Ideally this should also ve overridden in the derived classes, in order to update type hints,
-        # or add any additional logic.
+    def _get_processed_default_value(self) -> Any:
+        # NOTE: Override in the derived classes to add any additional logic.
         return self.default_value
+
+    def get_default_value(
+        self, modality: DataModality, data_sample: Union[DataSample, FirstStepCaseIndicator, None] = None
+    ) -> Any:
+        if modality == "static":
+            return self._get_processed_default_value()
+        elif modality == "temporal":
+            if self.timestep_default_mode == "no_action":
+                return self._get_processed_default_value()
+            elif self.timestep_default_mode == "take_previous":
+                if data_sample is None:
+                    raise ValueError(
+                        "`data_sample` must be provided or `'first_step'` must be passed when "
+                        "`timestep_default_mode` is `take_previous`."
+                    )
+                if data_sample == "first_step":
+                    return self._get_processed_default_value()
+                else:
+                    data_sample = cast(DataSample, data_sample)
+                    return data_sample.temporal[-1][self.feature_name]
+            else:
+                raise ValueError(f"Unknown `timestep_default_mode`: {self.timestep_default_mode}")
+        elif modality == "event":
+            # TODO: Subject to change.
+            return self._get_processed_default_value()
+        else:
+            raise ValueError(f"Unknown modality: {modality}")
+
+    def get_full_label(self) -> str:
+        if self.units is not None:
+            return f"{self.readable_name} ({self.units})"
+        else:
+            return self.readable_name
 
     def get_formatting(self) -> str:
         if self.formatting is not None:
@@ -96,7 +137,7 @@ class IntDef(FieldDef):
 
     def _render_widget(self, value: int) -> Any:
         return st.number_input(
-            label=self.readable_name,
+            label=self.get_full_label(),
             key=get_widget_st_key(self),
             min_value=self.min_value,
             max_value=self.max_value,
@@ -105,7 +146,7 @@ class IntDef(FieldDef):
             help=self.info,
         )
 
-    def get_default_value(self) -> int:
+    def _get_processed_default_value(self) -> int:
         if self.default_value is not None:
             if self.min_value is not None and self.default_value < self.min_value:
                 raise ValueError(
@@ -143,7 +184,7 @@ class FloatDef(FieldDef):
 
     def _render_widget(self, value: float) -> Any:
         return st.number_input(
-            label=self.readable_name,
+            label=self.get_full_label(),
             key=get_widget_st_key(self),
             min_value=self.min_value,
             max_value=self.max_value,
@@ -152,7 +193,7 @@ class FloatDef(FieldDef):
             help=self.info,
         )
 
-    def get_default_value(self) -> float:
+    def _get_processed_default_value(self) -> float:
         if self.default_value is not None:
             if self.min_value is not None and self.default_value < self.min_value:
                 raise ValueError(
@@ -188,14 +229,14 @@ class CategoricalDef(FieldDef):
 
     def _render_widget(self, value: str) -> Any:
         return st.selectbox(
-            label=self.readable_name,
+            label=self.get_full_label(),
             key=get_widget_st_key(self),
             options=self.options,
             index=self.options.index(value),
             help=self.info,
         )
 
-    def get_default_value(self) -> str:
+    def _get_processed_default_value(self) -> str:
         if self.default_value is not None and self.default_value not in self.options:
             raise ValueError(
                 f"The default value defined for '{self.feature_name}' was '{self.default_value}', which "
@@ -218,9 +259,9 @@ class BinaryDef(FieldDef):
         return ""
 
     def _render_widget(self, value: bool) -> Any:
-        return st.checkbox(label=self.readable_name, key=get_widget_st_key(self), value=value, help=self.info)
+        return st.checkbox(label=self.get_full_label(), key=get_widget_st_key(self), value=value, help=self.info)
 
-    def get_default_value(self) -> bool:
+    def _get_processed_default_value(self) -> bool:
         return self.default_value
 
     def _default_transform_db_to_input(self, value: Any) -> bool:
@@ -239,15 +280,14 @@ class StrDef(FieldDef):
 
     def _render_widget(self, value: str) -> Any:
         return st.text_area(
-            label=self.readable_name,
+            label=self.get_full_label(),
             key=get_widget_st_key(self),
             value=value,
             help=self.info,
         )
 
-    def get_default_value(self) -> str:
-        # Overridden to add type hint only.
-        return super().get_default_value()
+    def _get_processed_default_value(self) -> str:
+        return self.default_value
 
     def _default_transform_db_to_input(self, value: Any) -> str:
         return str(value)
@@ -256,32 +296,8 @@ class StrDef(FieldDef):
         return str(value)
 
 
-class TimeIndexDef(FieldDef):
-    time_index_type: ClassVar[TimeIndexType]
-    data_type: ClassVar[DataType] = "time_index"
-
-    @abc.abstractmethod
-    def get_next(self, value: Any) -> Any:
-        ...
-
-
-class IntTimeIndexDef(IntDef, TimeIndexDef):
-    time_index_type: ClassVar[TimeIndexType] = "int"
-
-    def get_next(self, value: int) -> int:
-        return value + 1
-
-
-class FloatTimeIndexDef(FloatDef, TimeIndexDef):
-    time_index_type: ClassVar[TimeIndexType] = "float"
-
-    def get_next(self, value: float) -> float:
-        return value + 1.0
-
-
-class DateTimeIndexDef(TimeIndexDef):
-    time_index_type: ClassVar[TimeIndexType] = "date"
-
+class DateDef(FieldDef):
+    data_type: ClassVar[DataType] = "date"
     default_value: Optional[datetime.datetime] = None
 
     min_value: Optional[datetime.date] = None
@@ -292,21 +308,18 @@ class DateTimeIndexDef(TimeIndexDef):
 
     def _render_widget(self, value: datetime.date) -> Any:
         return st.date_input(
-            label=self.readable_name,
+            label=self.get_full_label(),
             key=get_widget_st_key(self),
             max_value=self.max_value,
             min_value=self.min_value,
             value=value,
         )
 
-    def get_default_value(self) -> datetime.date:
+    def _get_processed_default_value(self) -> datetime.date:
         if self.default_value is None:
             return datetime.datetime.now().date()
         else:
             return self.default_value
-
-    def get_next(self, value: datetime.date) -> datetime.date:
-        return value + datetime.timedelta(days=1)
 
     def _default_transform_db_to_input(self, value: str) -> datetime.date:
         return datetime.datetime.fromisoformat(value).date()
@@ -315,69 +328,152 @@ class DateTimeIndexDef(TimeIndexDef):
         return value.strftime("%Y-%m-%d")
 
 
+class TimeIndexDef(FieldDef):
+    is_time_index: ClassVar[bool] = True
+
+    @abc.abstractmethod
+    def get_next(self, value: Any) -> Any:
+        ...
+
+
+class IntTimeIndexDef(IntDef, TimeIndexDef):
+    def get_next(self, value: int) -> int:
+        return value + 1
+
+
+class FloatTimeIndexDef(FloatDef, TimeIndexDef):
+    def get_next(self, value: float) -> float:
+        return value + 1.0
+
+
+class DateTimeIndexDef(DateDef, TimeIndexDef):
+    def get_next(self, value: datetime.date) -> datetime.date:
+        return value + datetime.timedelta(days=1)
+
+
 class ComputedDef(FieldDef):
-    computed_type: ClassVar[ComputedType]
-    data_type: ClassVar[DataType] = "computed"
+    is_computed: ClassVar[bool] = True
 
-    computation: Callable[[Dict], Any]
+    computation: Callable[[DataSample, TimeStep], Any]
 
-    def _render_widget(self, value: float) -> Any:
+    hide_computed_icon: bool = False
+
+    def _render_widget(self, value: Any) -> Any:
         return st.markdown(
-            f"{self.readable_name}:<br/>`Computed automatically`"
-            + (f"<br/>*{self.info}*" if self.info is not None else ""),
+            f"{self.get_full_label()}:<br/>`Computed automatically"
+            + (f": {self.info}" if self.info is not None else "")
+            + "`",
             unsafe_allow_html=True,
         )
 
-    def compute(self, data: Dict) -> Any:
-        # NOTE: Currently the data passed in here is:
-        #   - the static data for static data computed fields.
-        #   - the temporal data *for the current timestep* for temporal data computed fields.
-        #   - event computed data case not handled.
-        return self.computation(data)
+    def compute(self, data_sample: DataSample, current_timestep: TimeStep) -> Any:
+        """Make whatever computation the field requires and return the computed value.
+
+        Note:
+            The computation cascades from static data, to time series data, to event data.
+
+        Args:
+            data_sample (DataSample): Sample data object, before computation.
+            current_timestep (TimeStep): The currently selected time step.
+
+        Returns:
+            Any: The resultant computed value.
+        """
+        return self.computation(data_sample, current_timestep)
+
+    def get_full_label(self) -> str:
+        label = self.readable_name
+        if not self.hide_computed_icon:
+            label += " 📟"
+        if self.units is not None:
+            label += f" ({self.units})"
+        return label
+
+
+class IntComputedDef(ComputedDef, IntDef):
+    pass
 
 
 class FloatComputedDef(ComputedDef, FloatDef):
-    computed_type: ClassVar[ComputedType]
-    data_type: ClassVar[DataType] = "computed"
+    pass
+
+
+class CategoricalComputedDef(ComputedDef, CategoricalDef):
+    pass
+
+
+class BinaryComputedDef(ComputedDef, BinaryDef):
+    pass
+
+
+class StrComputedDef(ComputedDef, StrDef):
+    pass
+
+
+class DateComputedDef(ComputedDef, DateDef):
+    pass
+
+
+DATA_TYPE_FIELD_DEF_MAP: Dict[str, Type[FieldDef]] = {
+    "int": IntDef,
+    "float": FloatDef,
+    "categorical": CategoricalDef,
+    "binary": BinaryDef,
+    "str": StrDef,
+    "date": DateDef,
+}
+
+DATA_TYPE_FIELD_DEF_TIME_INDEX_MAP: Dict[str, Type[TimeIndexDef]] = {
+    "int": IntTimeIndexDef,
+    "float": FloatTimeIndexDef,
+    "date": DateTimeIndexDef,
+}
+
+DATA_TYPE_FIELD_DEF_COMPUTED_MAP: Dict[str, Type[ComputedDef]] = {
+    "int": IntComputedDef,
+    "float": FloatComputedDef,
+    "categorical": CategoricalComputedDef,
+    "binary": BinaryComputedDef,
+    "str": StrComputedDef,
+    "date": DateComputedDef,
+}
 
 
 def _parse_field_defs_dict(field_defs: Dict[str, Dict], data_modality: DataModality) -> Dict[str, FieldDef]:
     parsed: Dict[str, FieldDef] = dict()
     for feature_name, field_def in field_defs.items():
-        if field_def["data_type"] == "int":
-            parsed[feature_name] = IntDef(feature_name=feature_name, data_modality=data_modality, **field_def)
-        elif field_def["data_type"] == "float":
-            parsed[feature_name] = FloatDef(feature_name=feature_name, data_modality=data_modality, **field_def)
-        elif field_def["data_type"] == "categorical":
-            parsed[feature_name] = CategoricalDef(feature_name=feature_name, data_modality=data_modality, **field_def)
-        elif field_def["data_type"] == "binary":
-            parsed[feature_name] = BinaryDef(feature_name=feature_name, data_modality=data_modality, **field_def)
-        elif field_def["data_type"] == "str":
-            parsed[feature_name] = StrDef(feature_name=feature_name, data_modality=data_modality, **field_def)
-        elif field_def["data_type"] == "time_index":
-            if field_def["time_index_type"] == "int":
-                parsed[feature_name] = IntTimeIndexDef(
-                    feature_name=feature_name, data_modality=data_modality, **field_def
-                )
-            elif field_def["time_index_type"] == "float":
-                parsed[feature_name] = FloatTimeIndexDef(
-                    feature_name=feature_name, data_modality=data_modality, **field_def
-                )
-            elif field_def["time_index_type"] == "date":
-                parsed[feature_name] = DateTimeIndexDef(
-                    feature_name=feature_name, data_modality=data_modality, **field_def
+        if "is_time_index" in field_def and field_def["is_time_index"] is True:
+            # Time index fields.
+            if field_def["data_type"] not in DATA_TYPE_FIELD_DEF_TIME_INDEX_MAP:
+                raise ValueError(
+                    f"Unknown data type for a time index field: {field_def['data_type']}. "
+                    f"Must be one of {DATA_TYPE_FIELD_DEF_TIME_INDEX_MAP.keys()}"
                 )
             else:
-                raise TypeError(f"Unknown 'time_index_type' encountered: {field_def['time_index_type']}")
-        elif field_def["data_type"] == "computed":
-            if field_def["computed_type"] == "float":
-                parsed[feature_name] = FloatComputedDef(
+                parsed[feature_name] = DATA_TYPE_FIELD_DEF_TIME_INDEX_MAP[field_def["data_type"]](
                     feature_name=feature_name, data_modality=data_modality, **field_def
                 )
+        elif "is_computed" in field_def and field_def["is_computed"] is True:
+            # Computed fields.
+            if field_def["data_type"] not in DATA_TYPE_FIELD_DEF_COMPUTED_MAP:
+                raise ValueError(
+                    f"Unknown data type for a computed field: {field_def['data_type']}. "
+                    f"Must be one of {DATA_TYPE_FIELD_DEF_COMPUTED_MAP.keys()}"
+                )
             else:
-                raise TypeError(f"Unknown 'computed_type' encountered: {field_def['computed_type']}")
+                parsed[feature_name] = DATA_TYPE_FIELD_DEF_COMPUTED_MAP[field_def["data_type"]](
+                    feature_name=feature_name, data_modality=data_modality, **field_def
+                )
         else:
-            raise TypeError(f"Unknown 'data_type' encountered: {field_def['data_type']}")
+            # "Normal" fields.
+            if field_def["data_type"] not in DATA_TYPE_FIELD_DEF_MAP:
+                raise ValueError(
+                    f"Unknown data type: {field_def['data_type']}. Must be one of {DATA_TYPE_FIELD_DEF_MAP.keys()}"
+                )
+            else:
+                parsed[feature_name] = DATA_TYPE_FIELD_DEF_MAP[field_def["data_type"]](
+                    feature_name=feature_name, data_modality=data_modality, **field_def
+                )
     return parsed
 
 
@@ -385,13 +481,11 @@ def parse_field_defs(field_defs_raw: DataDefsCollectionDict) -> FieldDefsCollect
     if "temporal" in field_defs_raw:
         if DEFAULTS.time_index_field not in field_defs_raw["temporal"]:
             raise ValueError("'time_index' key must be present in field defs -> temporal")
-        if (
-            DEFAULTS.time_index_field in field_defs_raw["temporal"]
-            and field_defs_raw["temporal"][DEFAULTS.time_index_field]["data_type"] != DEFAULTS.time_index_field
+        if DEFAULTS.time_index_field in field_defs_raw["temporal"] and (
+            ("is_time_index" not in field_defs_raw["temporal"][DEFAULTS.time_index_field])
+            or field_defs_raw["temporal"][DEFAULTS.time_index_field]["is_time_index"] is False
         ):
-            raise ValueError("'time_index' field def must have 'data_type' == 'time_index'")
-        # TODO: time index must be first in the dict.
-        # TODO: time_index_type must be present.
+            raise ValueError("'time_index' field def must have 'is_time_index' set to True")
     return FieldDefsCollection(
         static=(
             _parse_field_defs_dict(field_defs=field_defs_raw["static"], data_modality="static")
@@ -411,39 +505,96 @@ def parse_field_defs(field_defs_raw: DataDefsCollectionDict) -> FieldDefsCollect
     )
 
 
-def get_default(field_defs: Dict[str, FieldDef]) -> Dict[str, Dict]:
-    data_sample = dict()
+def get_default(
+    field_defs: Dict[str, FieldDef],
+    modality: DataModality,
+    data_sample: Union[DataSample, FirstStepCaseIndicator, None] = None,
+) -> Dict[str, Dict]:
+    data_fields = dict()
 
     # Get defaults for non-computed fields:
     for field_name, field_def in field_defs.items():
-        if field_def.data_type != "computed":
-            data_sample[field_name] = field_def.get_default_value()
+        if not field_def.is_computed:
+            print("field name", field_name)
+            data_fields[field_name] = field_def.get_default_value(modality=modality, data_sample=data_sample)
+
+    print("data_fields")
+    print(data_fields)
+
+    return data_fields
+
+
+def get_default_computed(
+    field_defs: Dict[str, FieldDef],
+    modality: DataModality,
+    data_sample_before_computation: DataSample,
+    current_timestep: TimeStep,
+) -> Dict[str, Dict]:
+    if modality == "static":
+        data_fields = data_sample_before_computation.static.copy()
+    elif modality == "temporal":
+        data_fields = data_sample_before_computation.temporal[-1].copy()
+    elif modality == "event":
+        # TODO: This is to be revised.
+        data_fields = data_sample_before_computation.event[-1].copy()
+    else:
+        raise ValueError(f"Unknown modality encountered: {modality}")
+
     # Compute the computed fields:
     for field_name, field_def in field_defs.items():
-        if field_def.data_type == "computed":
+        if field_def.is_computed:
             if not isinstance(field_def, ComputedDef):
                 raise RuntimeError
-            data_sample[field_name] = field_def.compute(data_sample)
+            data_fields[field_name] = field_def.compute(data_sample_before_computation, current_timestep)
 
-    return data_sample
+    return data_fields
 
 
-def update(field_defs: Dict[str, FieldDef], session_state: Any) -> Dict[str, Dict]:
-    data_sample = dict()
+def update(
+    field_defs: Dict[str, FieldDef],
+    session_state: Any,
+    modality: DataModality,
+    data_sample: DataSample,
+    current_timestep: TimeStep,
+    computed_only: bool = False,
+) -> Dict[str, Dict]:
+    data_fields = dict()
 
-    # Update non-computed fields:
-    for field_name, field_def in field_defs.items():
-        key = get_widget_st_key(field_def)
-        if field_def.data_type != "computed":
-            data_sample[field_name] = session_state[key]
+    if computed_only is False:
+        # Update non-computed fields:
+        for field_name, field_def in field_defs.items():
+            key = get_widget_st_key(field_def)
+            if not field_def.is_computed:
+                data_fields[field_name] = session_state[key]
+
+        if modality == "static":
+            data_sample.static = data_fields
+        elif modality == "temporal":
+            data_sample.temporal[current_timestep] = data_fields
+        elif modality == "event":
+            # TODO: This is to be revised.
+            data_sample.event[current_timestep] = data_fields
+        else:
+            raise ValueError(f"Unknown modality encountered: {modality}")
+    else:
+        if modality == "static":
+            data_fields = data_sample.static
+        elif modality == "temporal":
+            data_fields = data_sample.temporal[current_timestep]
+        elif modality == "event":
+            # TODO: This is to be revised.
+            data_fields = data_sample.event[current_timestep]
+        else:
+            raise ValueError(f"Unknown modality encountered: {modality}")
+
     # Update computed fields:
     for field_name, field_def in field_defs.items():
-        if field_def.data_type == "computed":
+        if field_def.is_computed:
             if not isinstance(field_def, ComputedDef):
                 raise RuntimeError
-            data_sample[field_name] = field_def.compute(data_sample)
+            data_fields[field_name] = field_def.compute(data_sample, current_timestep)
 
-    return data_sample
+    return data_fields
 
 
 def process_db_to_input(field_defs: Dict[str, FieldDef], data: Dict) -> Dict:
