@@ -460,6 +460,8 @@ def temporal_data_table(
     heading: str = "### Temporal Data",
     split_heading_and_buttons: bool = False,
     heading_row_columns: Sequence[Union[int, float]] = (0.5, 0.133, 0.133, 0.134, 0.1),
+    first_timestep_note: Optional[str] = None,
+    last_timestep_note: Optional[str] = None,
 ) -> None:
     # If split_heading_and_buttons == True, the heading_row_columns should NOT include the dimensions for
     # the heading column - the hading will be on its own row.
@@ -522,6 +524,11 @@ def temporal_data_table(
     with col_steps:
         add_vertical_space(1)
         st.markdown(f"`time-step: {app_state.current_timestep + 1}/{n_timesteps}`")
+
+    if first_timestep_note is not None and app_state.current_timestep == 0:
+        st.info(first_timestep_note)
+    if last_timestep_note is not None and app_state.current_timestep == (n_timesteps - 1):
+        st.info(last_timestep_note)
 
     if app_state.interaction_state == "adding_temporal_data":
         new_time_index = _generate_new_time_index(field_defs=field_defs, data_sample=data_sample)
