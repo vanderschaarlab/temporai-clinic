@@ -238,7 +238,11 @@ def sample_selector(
 
 
 def _update_sample_static_data(
-    app_state: AppState, db: "DetaBase", field_defs: field_def.FieldDefsCollection, data_sample: DataSample
+    app_state: AppState,
+    db: "DetaBase",
+    field_defs: field_def.FieldDefsCollection,
+    data_sample: DataSample,
+    computed_only: bool = False,
 ):
     current_sample = app_state.current_sample
     if current_sample is None:
@@ -250,6 +254,7 @@ def _update_sample_static_data(
         modality="static",
         data_sample=data_sample,
         current_timestep=app_state.current_timestep,
+        computed_only=computed_only,
     )
 
     data_sample = DataSample(static=static, temporal=data_sample.temporal, event=data_sample.event)
@@ -257,6 +262,9 @@ def _update_sample_static_data(
     deta_utils.update_sample(db=db, key=current_sample, data_sample=data_sample, field_defs=field_defs)
 
     app_state.interaction_state = "showing"
+
+    # TODO: Temporal computed fields may depend on the static fields.
+    # Need code to update them (all timesteps) upon static data change.
 
 
 def _show_validation_error(validation_error_container: Any, msg: str):
@@ -316,6 +324,11 @@ def _update_sample_temporal_data(
 
     app_state.current_timestep = current_timestep
     app_state.interaction_state = "showing"
+
+    # If any static fields are computed, since they may depend on the temporal data, re-compute them.
+    _update_sample_static_data(
+        app_state=app_state, db=db, field_defs=field_defs, data_sample=data_sample, computed_only=True
+    )
 
 
 def _add_sample_temporal_data(
@@ -525,11 +538,6 @@ def temporal_data_table(
         add_vertical_space(1)
         st.markdown(f"`time-step: {app_state.current_timestep + 1}/{n_timesteps}`")
 
-    if first_timestep_note is not None and app_state.current_timestep == 0:
-        st.info(first_timestep_note)
-    if last_timestep_note is not None and app_state.current_timestep == (n_timesteps - 1):
-        st.info(last_timestep_note)
-
     if app_state.interaction_state == "adding_temporal_data":
         new_time_index = _generate_new_time_index(field_defs=field_defs, data_sample=data_sample)
         faux_confirm_modal(
@@ -573,6 +581,12 @@ def temporal_data_table(
             cancel_btn_help="Cancel deleting the time-step data",
             button_cols_split=[0.3, 0.3, 0.4],
         )
+
+    if first_timestep_note is not None and app_state.current_timestep == 0:
+        st.info(first_timestep_note)
+    if last_timestep_note is not None and app_state.current_timestep == (n_timesteps - 1):
+        st.info(last_timestep_note)
+
     if app_state.interaction_state != "editing_temporal_data":
         timestep_df = _prepare_data_table(
             data=data_sample.temporal[app_state.current_timestep], field_defs=field_defs.temporal

@@ -532,24 +532,36 @@ def update(
     modality: DataModality,
     data_sample: DataSample,
     current_timestep: TimeStep,
+    computed_only: bool = False,
 ) -> Dict[str, Dict]:
     data_fields = dict()
 
-    # Update non-computed fields:
-    for field_name, field_def in field_defs.items():
-        key = get_widget_st_key(field_def)
-        if not field_def.is_computed:
-            data_fields[field_name] = session_state[key]
+    if computed_only is False:
+        # Update non-computed fields:
+        for field_name, field_def in field_defs.items():
+            key = get_widget_st_key(field_def)
+            if not field_def.is_computed:
+                data_fields[field_name] = session_state[key]
 
-    if modality == "static":
-        data_sample.static = data_fields
-    elif modality == "temporal":
-        data_sample.temporal[current_timestep] = data_fields
-    elif modality == "event":
-        # TODO: This is to be revised.
-        data_sample.event[current_timestep] = data_fields
+        if modality == "static":
+            data_sample.static = data_fields
+        elif modality == "temporal":
+            data_sample.temporal[current_timestep] = data_fields
+        elif modality == "event":
+            # TODO: This is to be revised.
+            data_sample.event[current_timestep] = data_fields
+        else:
+            raise ValueError(f"Unknown modality encountered: {modality}")
     else:
-        raise ValueError(f"Unknown modality encountered: {modality}")
+        if modality == "static":
+            data_fields = data_sample.static
+        elif modality == "temporal":
+            data_fields = data_sample.temporal[current_timestep]
+        elif modality == "event":
+            # TODO: This is to be revised.
+            data_fields = data_sample.event[current_timestep]
+        else:
+            raise ValueError(f"Unknown modality encountered: {modality}")
 
     # Update computed fields:
     for field_name, field_def in field_defs.items():

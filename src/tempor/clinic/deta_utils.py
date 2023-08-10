@@ -124,7 +124,7 @@ def add_empty_sample(db: DetaBase, key: str, field_defs: "field_def.FieldDefsCol
         )
         data_sample.event = [event_0]
 
-    static = field_def.process_input_to_db(field_defs=field_defs.static, data=static)
+    static = field_def.process_input_to_db(field_defs=field_defs.static, data=data_sample.static)
     temporal = [field_def.process_input_to_db(field_defs=field_defs.temporal, data=temporal_0)]
     event = [field_def.process_input_to_db(field_defs=field_defs.event, data=event_0)]
 
