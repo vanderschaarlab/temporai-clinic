@@ -33,8 +33,11 @@ class FieldDef(BaseModel, abc.ABC):
     data_modality: DataModality
     feature_name: str
     readable_name: str
+    units: Optional[str] = None
+
     default_value: Any = None
     timestep_default_mode: TimestepDefaultMode = "no_action"
+
     formatting: Optional[str] = None
     info: Optional[str] = None
 
@@ -88,6 +91,12 @@ class FieldDef(BaseModel, abc.ABC):
         else:
             raise ValueError(f"Unknown modality: {modality}")
 
+    def get_full_label(self) -> str:
+        if self.units is not None:
+            return f"{self.readable_name} ({self.units})"
+        else:
+            return self.readable_name
+
     def get_formatting(self) -> str:
         if self.formatting is not None:
             return self.formatting
@@ -128,7 +137,7 @@ class IntDef(FieldDef):
 
     def _render_widget(self, value: int) -> Any:
         return st.number_input(
-            label=self.readable_name,
+            label=self.get_full_label(),
             key=get_widget_st_key(self),
             min_value=self.min_value,
             max_value=self.max_value,
@@ -175,7 +184,7 @@ class FloatDef(FieldDef):
 
     def _render_widget(self, value: float) -> Any:
         return st.number_input(
-            label=self.readable_name,
+            label=self.get_full_label(),
             key=get_widget_st_key(self),
             min_value=self.min_value,
             max_value=self.max_value,
@@ -220,7 +229,7 @@ class CategoricalDef(FieldDef):
 
     def _render_widget(self, value: str) -> Any:
         return st.selectbox(
-            label=self.readable_name,
+            label=self.get_full_label(),
             key=get_widget_st_key(self),
             options=self.options,
             index=self.options.index(value),
@@ -250,7 +259,7 @@ class BinaryDef(FieldDef):
         return ""
 
     def _render_widget(self, value: bool) -> Any:
-        return st.checkbox(label=self.readable_name, key=get_widget_st_key(self), value=value, help=self.info)
+        return st.checkbox(label=self.get_full_label(), key=get_widget_st_key(self), value=value, help=self.info)
 
     def _get_processed_default_value(self) -> bool:
         return self.default_value
@@ -271,7 +280,7 @@ class StrDef(FieldDef):
 
     def _render_widget(self, value: str) -> Any:
         return st.text_area(
-            label=self.readable_name,
+            label=self.get_full_label(),
             key=get_widget_st_key(self),
             value=value,
             help=self.info,
@@ -299,7 +308,7 @@ class DateDef(FieldDef):
 
     def _render_widget(self, value: datetime.date) -> Any:
         return st.date_input(
-            label=self.readable_name,
+            label=self.get_full_label(),
             key=get_widget_st_key(self),
             max_value=self.max_value,
             min_value=self.min_value,
@@ -347,9 +356,11 @@ class ComputedDef(FieldDef):
 
     computation: Callable[[DataSample, TimeStep], Any]
 
+    hide_computed_icon: bool = False
+
     def _render_widget(self, value: Any) -> Any:
         return st.markdown(
-            f"{self.readable_name}:<br/>`Computed automatically`"
+            f"{self.get_full_label()}:<br/>`Computed automatically`"
             + (f"<br/>*{self.info}*" if self.info is not None else ""),
             unsafe_allow_html=True,
         )
@@ -368,6 +379,14 @@ class ComputedDef(FieldDef):
             Any: The resultant computed value.
         """
         return self.computation(data_sample, current_timestep)
+
+    def get_full_label(self) -> str:
+        label = self.readable_name
+        if not self.hide_computed_icon:
+            label += " 📟"
+        if self.units is not None:
+            label += f" ({self.units})"
+        return label
 
 
 class IntComputedDef(ComputedDef, IntDef):
@@ -495,7 +514,11 @@ def get_default(
     # Get defaults for non-computed fields:
     for field_name, field_def in field_defs.items():
         if not field_def.is_computed:
+            print("field name", field_name)
             data_fields[field_name] = field_def.get_default_value(modality=modality, data_sample=data_sample)
+
+    print("data_fields")
+    print(data_fields)
 
     return data_fields
 

@@ -146,5 +146,5 @@ def update_sample(db: DetaBase, key: str, data_sample: DataSample, field_defs: "
 
     data_sample_processed = dict(DataSample(static=static, temporal=temporal, event=event))
 
-    print(f"Adding new sample to db.\nkey: {key}\ndata:\n{data_sample_processed}")
+    print(f"Updating sample sample in db.\nkey: {key}\ndata:\n{data_sample_processed}")
     db.put(dict(data_sample_processed), key=key)

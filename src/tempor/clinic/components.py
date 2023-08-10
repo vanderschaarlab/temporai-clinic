@@ -343,15 +343,16 @@ def _add_sample_temporal_data(
         raise RuntimeError("`current_sample` was `None`")
 
     new_timestep = field_def.get_default(field_defs.temporal, modality="temporal", data_sample=data_sample)
+    new_timestep[DEFAULTS.time_index_field] = new_time_index
+    data_sample.temporal += [new_timestep]
+
     new_timestep = field_def.get_default_computed(
         field_defs=field_defs.temporal,
         modality="temporal",
         data_sample_before_computation=data_sample,
         current_timestep=app_state.current_timestep,
     )
-
-    new_timestep[DEFAULTS.time_index_field] = new_time_index
-    data_sample.temporal += [new_timestep]
+    data_sample.temporal[-1] = new_timestep
 
     data_sample = DataSample(static=data_sample.static, temporal=data_sample.temporal, event=data_sample.event)
 
@@ -397,7 +398,7 @@ def _delete_sample_temporal_data(
 def _prepare_data_table(data: Dict[str, Any], field_defs: Dict[str, field_def.FieldDef]) -> pd.DataFrame:
     sample_df_dict = {"Record": [], "Value": []}  # type: ignore [var-annotated]
     for field_name, value in data.items():
-        sample_df_dict["Record"].append(field_defs[field_name].readable_name)
+        sample_df_dict["Record"].append(field_defs[field_name].get_full_label())
         sample_df_dict["Value"].append(utils.format_with_field_formatting(value, field_defs[field_name]))
     return pd.DataFrame(sample_df_dict).set_index("Record", drop=True)
 
@@ -617,10 +618,12 @@ def temporal_data_table(
 
 def temporal_data_chart(data_sample: DataSample, field_defs: field_def.FieldDefsCollection):
     feature_keys = list(field_defs.temporal.keys())
-    feature_readable_names = [fd.readable_name for _, fd in field_defs.temporal.items()]
+    feature_readable_names = [fd.get_full_label() for _, fd in field_defs.temporal.items()]
     selectbox_feature_keys = [feature_key for feature_key in feature_keys if feature_key != DEFAULTS.time_index_field]
     selectbox_feature_readable_names = [
-        fd.readable_name for feature_key, fd in field_defs.temporal.items() if feature_key != DEFAULTS.time_index_field
+        fd.get_full_label()
+        for feature_key, fd in field_defs.temporal.items()
+        if feature_key != DEFAULTS.time_index_field
     ]
 
     selected_feature_readable_name = st.selectbox(label="Time series", options=selectbox_feature_readable_names)
