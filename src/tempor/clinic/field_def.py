@@ -1,6 +1,6 @@
 import abc
 import datetime
-from typing import Any, Callable, ClassVar, Dict, List, NamedTuple, Optional, Union
+from typing import Any, Callable, ClassVar, Dict, List, NamedTuple, Optional, Type, Union
 
 import streamlit as st
 from pydantic import BaseModel
@@ -8,9 +8,7 @@ from typing_extensions import Literal
 
 from tempor.clinic.const import DEFAULTS, STATE_KEYS, DataDefsCollectionDict, DataModality, DataSample
 
-DataType = Literal["int", "float", "categorical", "binary", "str", "time_index", "computed"]
-TimeIndexType = Literal["date", "int", "float"]
-ComputedType = Literal["float"]
+DataType = Literal["int", "float", "categorical", "binary", "str", "date"]
 
 TimeStep = Union[datetime.date, float, int]
 
@@ -26,6 +24,8 @@ def get_widget_st_key(field_def: "FieldDef") -> str:
 
 class FieldDef(BaseModel, abc.ABC):
     data_type: ClassVar[DataType]
+    is_time_index: ClassVar[bool] = False
+    is_computed: ClassVar[bool] = False
 
     data_modality: DataModality
     feature_name: str
@@ -258,32 +258,8 @@ class StrDef(FieldDef):
         return str(value)
 
 
-class TimeIndexDef(FieldDef):
-    time_index_type: ClassVar[TimeIndexType]
-    data_type: ClassVar[DataType] = "time_index"
-
-    @abc.abstractmethod
-    def get_next(self, value: Any) -> Any:
-        ...
-
-
-class IntTimeIndexDef(IntDef, TimeIndexDef):
-    time_index_type: ClassVar[TimeIndexType] = "int"
-
-    def get_next(self, value: int) -> int:
-        return value + 1
-
-
-class FloatTimeIndexDef(FloatDef, TimeIndexDef):
-    time_index_type: ClassVar[TimeIndexType] = "float"
-
-    def get_next(self, value: float) -> float:
-        return value + 1.0
-
-
-class DateTimeIndexDef(TimeIndexDef):
-    time_index_type: ClassVar[TimeIndexType] = "date"
-
+class DateDef(FieldDef):
+    data_type: ClassVar[DataType] = "date"
     default_value: Optional[datetime.datetime] = None
 
     min_value: Optional[datetime.date] = None
@@ -307,9 +283,6 @@ class DateTimeIndexDef(TimeIndexDef):
         else:
             return self.default_value
 
-    def get_next(self, value: datetime.date) -> datetime.date:
-        return value + datetime.timedelta(days=1)
-
     def _default_transform_db_to_input(self, value: str) -> datetime.date:
         return datetime.datetime.fromisoformat(value).date()
 
@@ -317,13 +290,35 @@ class DateTimeIndexDef(TimeIndexDef):
         return value.strftime("%Y-%m-%d")
 
 
+class TimeIndexDef(FieldDef):
+    is_time_index: ClassVar[bool] = True
+
+    @abc.abstractmethod
+    def get_next(self, value: Any) -> Any:
+        ...
+
+
+class IntTimeIndexDef(IntDef, TimeIndexDef):
+    def get_next(self, value: int) -> int:
+        return value + 1
+
+
+class FloatTimeIndexDef(FloatDef, TimeIndexDef):
+    def get_next(self, value: float) -> float:
+        return value + 1.0
+
+
+class DateTimeIndexDef(DateDef, TimeIndexDef):
+    def get_next(self, value: datetime.date) -> datetime.date:
+        return value + datetime.timedelta(days=1)
+
+
 class ComputedDef(FieldDef):
-    computed_type: ClassVar[ComputedType]
-    data_type: ClassVar[DataType] = "computed"
+    is_computed: ClassVar[bool] = True
 
     computation: Callable[[DataSample, TimeStep], Any]
 
-    def _render_widget(self, value: float) -> Any:
+    def _render_widget(self, value: Any) -> Any:
         return st.markdown(
             f"{self.readable_name}:<br/>`Computed automatically`"
             + (f"<br/>*{self.info}*" if self.info is not None else ""),
@@ -346,48 +341,90 @@ class ComputedDef(FieldDef):
         return self.computation(data_sample, current_timestep)
 
 
+class IntComputedDef(ComputedDef, IntDef):
+    pass
+
+
 class FloatComputedDef(ComputedDef, FloatDef):
-    computed_type: ClassVar[ComputedType]
-    data_type: ClassVar[DataType] = "computed"
+    pass
+
+
+class CategoricalComputedDef(ComputedDef, CategoricalDef):
+    pass
+
+
+class BinaryComputedDef(ComputedDef, BinaryDef):
+    pass
+
+
+class StrComputedDef(ComputedDef, StrDef):
+    pass
+
+
+class DateComputedDef(ComputedDef, DateDef):
+    pass
+
+
+DATA_TYPE_FIELD_DEF_MAP: Dict[str, Type[FieldDef]] = {
+    "int": IntDef,
+    "float": FloatDef,
+    "categorical": CategoricalDef,
+    "binary": BinaryDef,
+    "str": StrDef,
+    "date": DateDef,
+}
+
+DATA_TYPE_FIELD_DEF_TIME_INDEX_MAP: Dict[str, Type[TimeIndexDef]] = {
+    "int": IntTimeIndexDef,
+    "float": FloatTimeIndexDef,
+    "date": DateTimeIndexDef,
+}
+
+DATA_TYPE_FIELD_DEF_COMPUTED_MAP: Dict[str, Type[ComputedDef]] = {
+    "int": IntComputedDef,
+    "float": FloatComputedDef,
+    "categorical": CategoricalComputedDef,
+    "binary": BinaryComputedDef,
+    "str": StrComputedDef,
+    "date": DateComputedDef,
+}
 
 
 def _parse_field_defs_dict(field_defs: Dict[str, Dict], data_modality: DataModality) -> Dict[str, FieldDef]:
     parsed: Dict[str, FieldDef] = dict()
     for feature_name, field_def in field_defs.items():
-        if field_def["data_type"] == "int":
-            parsed[feature_name] = IntDef(feature_name=feature_name, data_modality=data_modality, **field_def)
-        elif field_def["data_type"] == "float":
-            parsed[feature_name] = FloatDef(feature_name=feature_name, data_modality=data_modality, **field_def)
-        elif field_def["data_type"] == "categorical":
-            parsed[feature_name] = CategoricalDef(feature_name=feature_name, data_modality=data_modality, **field_def)
-        elif field_def["data_type"] == "binary":
-            parsed[feature_name] = BinaryDef(feature_name=feature_name, data_modality=data_modality, **field_def)
-        elif field_def["data_type"] == "str":
-            parsed[feature_name] = StrDef(feature_name=feature_name, data_modality=data_modality, **field_def)
-        elif field_def["data_type"] == "time_index":
-            if field_def["time_index_type"] == "int":
-                parsed[feature_name] = IntTimeIndexDef(
-                    feature_name=feature_name, data_modality=data_modality, **field_def
-                )
-            elif field_def["time_index_type"] == "float":
-                parsed[feature_name] = FloatTimeIndexDef(
-                    feature_name=feature_name, data_modality=data_modality, **field_def
-                )
-            elif field_def["time_index_type"] == "date":
-                parsed[feature_name] = DateTimeIndexDef(
-                    feature_name=feature_name, data_modality=data_modality, **field_def
+        if "is_time_index" in field_def and field_def["is_time_index"] is True:
+            # Time index fields.
+            if field_def["data_type"] not in DATA_TYPE_FIELD_DEF_TIME_INDEX_MAP:
+                raise ValueError(
+                    f"Unknown data type for a time index field: {field_def['data_type']}. "
+                    f"Must be one of {DATA_TYPE_FIELD_DEF_TIME_INDEX_MAP.keys()}"
                 )
             else:
-                raise TypeError(f"Unknown 'time_index_type' encountered: {field_def['time_index_type']}")
-        elif field_def["data_type"] == "computed":
-            if field_def["computed_type"] == "float":
-                parsed[feature_name] = FloatComputedDef(
+                parsed[feature_name] = DATA_TYPE_FIELD_DEF_TIME_INDEX_MAP[field_def["data_type"]](
                     feature_name=feature_name, data_modality=data_modality, **field_def
                 )
+        elif "is_computed" in field_def and field_def["is_computed"] is True:
+            # Computed fields.
+            if field_def["data_type"] not in DATA_TYPE_FIELD_DEF_COMPUTED_MAP:
+                raise ValueError(
+                    f"Unknown data type for a computed field: {field_def['data_type']}. "
+                    f"Must be one of {DATA_TYPE_FIELD_DEF_COMPUTED_MAP.keys()}"
+                )
             else:
-                raise TypeError(f"Unknown 'computed_type' encountered: {field_def['computed_type']}")
+                parsed[feature_name] = DATA_TYPE_FIELD_DEF_COMPUTED_MAP[field_def["data_type"]](
+                    feature_name=feature_name, data_modality=data_modality, **field_def
+                )
         else:
-            raise TypeError(f"Unknown 'data_type' encountered: {field_def['data_type']}")
+            # "Normal" fields.
+            if field_def["data_type"] not in DATA_TYPE_FIELD_DEF_MAP:
+                raise ValueError(
+                    f"Unknown data type: {field_def['data_type']}. Must be one of {DATA_TYPE_FIELD_DEF_MAP.keys()}"
+                )
+            else:
+                parsed[feature_name] = DATA_TYPE_FIELD_DEF_MAP[field_def["data_type"]](
+                    feature_name=feature_name, data_modality=data_modality, **field_def
+                )
     return parsed
 
 
@@ -395,13 +432,11 @@ def parse_field_defs(field_defs_raw: DataDefsCollectionDict) -> FieldDefsCollect
     if "temporal" in field_defs_raw:
         if DEFAULTS.time_index_field not in field_defs_raw["temporal"]:
             raise ValueError("'time_index' key must be present in field defs -> temporal")
-        if (
-            DEFAULTS.time_index_field in field_defs_raw["temporal"]
-            and field_defs_raw["temporal"][DEFAULTS.time_index_field]["data_type"] != DEFAULTS.time_index_field
+        if DEFAULTS.time_index_field in field_defs_raw["temporal"] and (
+            ("is_time_index" not in field_defs_raw["temporal"][DEFAULTS.time_index_field])
+            or field_defs_raw["temporal"][DEFAULTS.time_index_field]["is_time_index"] is False
         ):
-            raise ValueError("'time_index' field def must have 'data_type' == 'time_index'")
-        # TODO: time index must be first in the dict.
-        # TODO: time_index_type must be present.
+            raise ValueError("'time_index' field def must have 'is_time_index' set to True")
     return FieldDefsCollection(
         static=(
             _parse_field_defs_dict(field_defs=field_defs_raw["static"], data_modality="static")
@@ -426,7 +461,7 @@ def get_default(field_defs: Dict[str, FieldDef]) -> Dict[str, Dict]:
 
     # Get defaults for non-computed fields:
     for field_name, field_def in field_defs.items():
-        if field_def.data_type != "computed":
+        if not field_def.is_computed:
             data_fields[field_name] = field_def.get_default_value()
 
     return data_fields
@@ -450,7 +485,7 @@ def get_default_computed(
 
     # Compute the computed fields:
     for field_name, field_def in field_defs.items():
-        if field_def.data_type == "computed":
+        if field_def.is_computed:
             if not isinstance(field_def, ComputedDef):
                 raise RuntimeError
             data_fields[field_name] = field_def.compute(data_sample_before_computation, current_timestep)
@@ -470,7 +505,7 @@ def update(
     # Update non-computed fields:
     for field_name, field_def in field_defs.items():
         key = get_widget_st_key(field_def)
-        if field_def.data_type != "computed":
+        if not field_def.is_computed:
             data_fields[field_name] = session_state[key]
 
     if modality == "static":
@@ -485,7 +520,7 @@ def update(
 
     # Update computed fields:
     for field_name, field_def in field_defs.items():
-        if field_def.data_type == "computed":
+        if field_def.is_computed:
             if not isinstance(field_def, ComputedDef):
                 raise RuntimeError
             data_fields[field_name] = field_def.compute(data_sample, current_timestep)

@@ -83,6 +83,7 @@ def sidebar(
 
 def _set_current_example(app_state: AppState, sample_selector_key: str):
     app_state.current_sample = st.session_state[sample_selector_key]
+    app_state.current_timestep = 0
 
 
 def _delete_current_example(app_state: AppState, db: "DetaBase"):
@@ -94,6 +95,7 @@ def _delete_current_example(app_state: AppState, db: "DetaBase"):
 
 
 def _add_new_sample(app_state: AppState, db: "DetaBase", key: str, field_defs: field_def.FieldDefsCollection):
+    app_state.current_timestep = 0  # New sample is added with just one timestep, timestep 0.
     deta_utils.add_empty_sample(db=db, key=key, field_defs=field_defs, current_timestep=app_state.current_timestep)
     app_state.current_sample = key
 
