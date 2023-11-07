@@ -27,7 +27,7 @@ def connect_to_db(
     base = deta.Base(var_taker[base_name_env_var])
     drive: Optional[DetaDrive] = None
     if drive_name_env_var:
-        drive = deta.Drive(st.secrets[drive_name_env_var])
+        drive = deta.Drive(var_taker[drive_name_env_var])
     return deta, base, drive
 
 
