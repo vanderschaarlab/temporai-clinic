@@ -8,16 +8,23 @@ from deta import Deta
 from deta import _Base as DetaBase
 from deta import _Drive as DetaDrive
 from loguru import logger
+from typing_extensions import Literal
 
 from . import field_def
 from .const import DataDefsCollectionDict, DataSample
 
+TakeVarsFrom = Literal["st_secrets", "env"]
+
 
 def connect_to_db(
-    deta_key_secret: str, base_name_env_var: str, drive_name_env_var: Optional[str] = None
+    deta_key_secret: str,
+    base_name_env_var: str,
+    take_vars_from: TakeVarsFrom = "st_secrets",
+    drive_name_env_var: Optional[str] = None,
 ) -> Tuple[Deta, DetaBase, Optional[DetaDrive]]:
-    deta = Deta(st.secrets[deta_key_secret])
-    base = deta.Base(st.secrets[base_name_env_var])
+    var_taker = st.secrets if take_vars_from == "st_secrets" else os.environ
+    deta = Deta(var_taker[deta_key_secret])
+    base = deta.Base(var_taker[base_name_env_var])
     drive: Optional[DetaDrive] = None
     if drive_name_env_var:
         drive = deta.Drive(st.secrets[drive_name_env_var])
