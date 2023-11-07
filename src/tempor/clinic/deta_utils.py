@@ -7,19 +7,27 @@ import streamlit as st
 from deta import Deta
 from deta import _Base as DetaBase
 from deta import _Drive as DetaDrive
+from loguru import logger
+from typing_extensions import Literal
 
 from . import field_def
 from .const import DataDefsCollectionDict, DataSample
 
+TakeVarsFrom = Literal["st_secrets", "env"]
+
 
 def connect_to_db(
-    deta_key_secret: str, base_name_env_var: str, drive_name_env_var: Optional[str] = None
+    deta_key_secret: str,
+    base_name_env_var: str,
+    take_vars_from: TakeVarsFrom = "st_secrets",
+    drive_name_env_var: Optional[str] = None,
 ) -> Tuple[Deta, DetaBase, Optional[DetaDrive]]:
-    deta = Deta(st.secrets[deta_key_secret])
-    base = deta.Base(st.secrets[base_name_env_var])
+    var_taker = st.secrets if take_vars_from == "st_secrets" else os.environ
+    deta = Deta(var_taker[deta_key_secret])
+    base = deta.Base(var_taker[base_name_env_var])
     drive: Optional[DetaDrive] = None
     if drive_name_env_var:
-        drive = deta.Drive(st.secrets[drive_name_env_var])
+        drive = deta.Drive(var_taker[drive_name_env_var])
     return deta, base, drive
 
 
@@ -27,20 +35,20 @@ def download_zipped_dir(drive: DetaDrive, zip_file: str = "data.zip", local_dir:
     # NOTE: Will only download and extract if the local directory does not exist.
     directory = os.path.realpath(local_dir)
     if not os.path.exists(directory):
-        print(f"Local directory {local_dir} does not exist, creating")
+        logger.info(f"Local directory {local_dir} does not exist, creating")
         os.makedirs(directory)
         # Get zip file from Deta Drive.
-        print(f"Downloading {zip_file} from Deta Drive")
+        logger.info(f"Downloading {zip_file} from Deta Drive")
         # For debug:
-        # print(drive.list())
+        # logger.info(drive.list())
         file = drive.get(zip_file)
         if file is None:
             raise RuntimeError(f"File {zip_file} not found on Deta Drive")
-        print(f"Unzipping {zip_file} to {local_dir}")
+        logger.info(f"Unzipping {zip_file} to {local_dir}")
         bytes_ = file.read()
         with zipfile.ZipFile(io.BytesIO(bytes_), "r") as zip_ref:
             zip_ref.extractall(directory)
-        print("Downloading and extracting zip file finished")
+        logger.info("Downloading and extracting zip file finished")
 
 
 def get_all_sample_keys(db: DetaBase) -> List[str]:
@@ -130,12 +138,12 @@ def add_empty_sample(db: DetaBase, key: str, field_defs: "field_def.FieldDefsCol
 
     data_sample_for_db = dict(DataSample(static=static, temporal=temporal, event=event))
 
-    print(f"Adding new sample to db.\nkey: {key}\ndata:\n{data_sample_for_db}")
+    logger.info(f"Adding new sample to db.\nkey: {key}\ndata:\n{data_sample_for_db}")
     db.put(data_sample_for_db, key=key)
 
 
 def delete_sample(db: DetaBase, key: str):
-    print(f"Deleting sample from db.\nkey: {key}")
+    logger.info(f"Deleting sample from db.\nkey: {key}")
     db.delete(key=key)
 
 
@@ -146,5 +154,5 @@ def update_sample(db: DetaBase, key: str, data_sample: DataSample, field_defs: "
 
     data_sample_processed = dict(DataSample(static=static, temporal=temporal, event=event))
 
-    print(f"Updating sample sample in db.\nkey: {key}\ndata:\n{data_sample_processed}")
+    logger.info(f"Updating sample sample in db.\nkey: {key}\ndata:\n{data_sample_processed}")
     db.put(dict(data_sample_processed), key=key)
