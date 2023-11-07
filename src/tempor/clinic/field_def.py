@@ -3,6 +3,7 @@ import datetime
 from typing import Any, Callable, ClassVar, Dict, List, NamedTuple, Optional, Type, Union, cast
 
 import streamlit as st
+from loguru import logger
 from pydantic import BaseModel
 from typing_extensions import Literal
 
@@ -515,11 +516,11 @@ def get_default(
     # Get defaults for non-computed fields:
     for field_name, field_def in field_defs.items():
         if not field_def.is_computed:
-            print("field name", field_name)
+            logger.info("field name", field_name)
             data_fields[field_name] = field_def.get_default_value(modality=modality, data_sample=data_sample)
 
-    print("data_fields")
-    print(data_fields)
+    logger.info("data_fields")
+    logger.info(data_fields)
 
     return data_fields
 
